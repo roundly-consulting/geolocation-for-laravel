@@ -61,14 +61,14 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
 
     public function locate(GeolocationQuery $query): ?Location
     {
-        if (is_null($query->latitude) || is_null($query->longitude)) {
+        $parameters = $this->geocodeParameters($query);
+
+        if ($parameters === null) {
             return null;
         }
 
         try {
-            $response = $this->client()->get('/geocode/json', [
-                'latlng' => "{$query->latitude},{$query->longitude}",
-            ]);
+            $response = $this->client()->get('/geocode/json', $parameters);
         } catch (RequestException) {
             return null;
         }
@@ -84,6 +84,33 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
             return null;
         }
 
+        return $this->toLocation($result);
+    }
+
+    /**
+     * Build the geocoding query parameters for either a reverse (coords) or forward
+     * (address) lookup, or null when neither is present.
+     *
+     * @return array{latlng: string}|array{address: string}|null
+     */
+    private function geocodeParameters(GeolocationQuery $query): ?array
+    {
+        if ($query->latitude !== null && $query->longitude !== null) {
+            return ['latlng' => "{$query->latitude},{$query->longitude}"];
+        }
+
+        if ($query->address !== null && $query->address !== '') {
+            return ['address' => $query->address];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    private function toLocation(array $result): Location
+    {
         /** @var list<array<string, mixed>> $components */
         $components = $result['address_components'] ?? [];
 
@@ -100,6 +127,8 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
             latitude: (float) $location['lat'],
             longitude: (float) $location['lng'],
             type: GeolocationType::Geolocation,
+            region: $this->component($components, 'administrative_area_level_1', 'long_name') ?? '',
+            postalCode: $this->component($components, 'postal_code', 'long_name') ?? '',
         );
     }
 
@@ -107,6 +136,7 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
     {
         return Http::baseUrl(rtrim((string) config('geolocation.services.google.url'), '/'))
             ->withQueryParameters(['key' => config('geolocation.services.google.key')])
+            ->timeout((int) config('geolocation.timeout', 5))
             ->retry(
                 (int) config('geolocation.services.google.retry'),
                 (int) config('geolocation.services.google.retry_delay'),

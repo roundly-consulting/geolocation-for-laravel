@@ -16,7 +16,7 @@ final class IpInfoProvider implements GeolocationProvider
 {
     public function locate(GeolocationQuery $query): ?Location
     {
-        if (is_null($query->ipAddress)) {
+        if ($query->ipAddress === null || filter_var($query->ipAddress, FILTER_VALIDATE_IP) === false) {
             return null;
         }
 
@@ -38,25 +38,50 @@ final class IpInfoProvider implements GeolocationProvider
 
         [$latitude, $longitude] = explode(',', $loc);
 
+        $city = (string) $response->json('city');
+        $region = (string) $response->json('region');
+        $country = (string) $response->json('country');
+
         return new Location(
-            humanReadable: (string) $response->json('city'),
+            humanReadable: $this->humanReadable($city, $region, $country),
             street: '',
-            city: (string) $response->json('city'),
-            countryIsoCode: (string) $response->json('country'),
+            city: $city,
+            countryIsoCode: $country,
             latitude: (float) $latitude,
             longitude: (float) $longitude,
             type: GeolocationType::Ip,
+            region: $region,
+            postalCode: (string) $response->json('postal'),
+            timezone: (string) $response->json('timezone'),
         );
+    }
+
+    private function humanReadable(string $city, string $region, string $country): string
+    {
+        $head = trim(implode(', ', array_filter([$city, $region])));
+
+        return trim(implode(' ', array_filter([$head, $country])));
     }
 
     private function client(): PendingRequest
     {
-        return Http::withToken((string) config('geolocation.services.ipinfo.token'))
-            ->baseUrl(rtrim((string) config('geolocation.services.ipinfo.url'), '/'))
+        $client = Http::baseUrl(rtrim((string) config('geolocation.services.ipinfo.url'), '/'))
+            ->timeout((int) config('geolocation.timeout', 5))
             ->retry(
                 (int) config('geolocation.services.ipinfo.retry'),
                 (int) config('geolocation.services.ipinfo.retry_delay'),
             )
             ->acceptJson();
+
+        /** @var string|null $token */
+        $token = config('geolocation.services.ipinfo.token');
+
+        // IPinfo's anonymous tier works without a token; only attach one when present so
+        // we never send an empty bearer header.
+        if ($token !== null && $token !== '') {
+            $client = $client->withToken($token);
+        }
+
+        return $client;
     }
 }

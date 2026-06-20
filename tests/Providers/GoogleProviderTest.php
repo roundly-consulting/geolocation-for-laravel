@@ -59,13 +59,55 @@ it('returns null when the distance element status is not ok', function (): void 
     ))->toBeNull();
 });
 
-it('returns null when no latitude or longitude is provided to geolocate', function (): void {
+it('returns null when no latitude, longitude or address is provided to geolocate', function (): void {
     $provider = new GoogleProvider;
 
     expect($provider->locate(new GeolocationQuery))
         ->toBeNull()
         ->and($provider->locate(new GeolocationQuery(latitude: 1.2)))->toBeNull()
         ->and($provider->locate(new GeolocationQuery(longitude: 1.2)))->toBeNull();
+
+    Http::assertNothingSent();
+});
+
+it('forward geocodes an address into a location', function (): void {
+    Http::fake([
+        '*/geocode/json*' => Http::response([
+            'results' => [[
+                'formatted_address' => '1600 Amphitheatre Pkwy, Mountain View, CA 94043, USA',
+                'geometry' => ['location' => ['lat' => 37.4224, 'lng' => -122.0841]],
+                'address_components' => [
+                    ['long_name' => 'Amphitheatre Parkway', 'short_name' => 'Amphitheatre Pkwy', 'types' => ['route']],
+                    ['long_name' => 'Mountain View', 'short_name' => 'Mountain View', 'types' => ['locality']],
+                    ['long_name' => 'California', 'short_name' => 'CA', 'types' => ['administrative_area_level_1']],
+                    ['long_name' => '94043', 'short_name' => '94043', 'types' => ['postal_code']],
+                    ['long_name' => 'United States', 'short_name' => 'US', 'types' => ['country']],
+                ],
+            ]],
+        ]),
+    ]);
+
+    $location = (new GoogleProvider)->locate(new GeolocationQuery(address: '1600 Amphitheatre Pkwy'));
+
+    expect($location)
+        ->toBeInstanceOf(Location::class)
+        ->city->toBe('Mountain View')
+        ->region->toBe('California')
+        ->postalCode->toBe('94043')
+        ->countryIsoCode->toBe('US')
+        ->latitude->toBe(37.4224)
+        ->longitude->toBe(-122.0841)
+        ->type->toBe(GeolocationType::Geolocation);
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), 'address=1600'));
+});
+
+it('returns null when an address yields no results', function (): void {
+    Http::fake([
+        '*/geocode/json*' => Http::response(['results' => []]),
+    ]);
+
+    expect((new GoogleProvider)->locate(new GeolocationQuery(address: 'nowhere at all')))->toBeNull();
 });
 
 it('returns geolocation by latitude and longitude using the geocoding api', function (): void {
