@@ -5,25 +5,84 @@ declare(strict_types=1);
 use RoundlyConsulting\Geolocation\Providers\DefaultLocationProvider;
 use RoundlyConsulting\Geolocation\Providers\GoogleProvider;
 use RoundlyConsulting\Geolocation\Providers\IpInfoProvider;
+use RoundlyConsulting\Geolocation\Providers\MaxMindDatabaseProvider;
+use RoundlyConsulting\Geolocation\Providers\MaxMindWebServiceProvider;
 
 return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pipeline
+    |--------------------------------------------------------------------------
+    |
+    | The ordered list of provider names consulted when resolving a location or
+    | a distance. The first provider that returns a non-null result wins, so
+    | order them from most to least specific. Each name must map to an entry in
+    | the "providers" map below.
+    |
+    */
+
+    'pipeline' => ['maxmind_database', 'maxmind_web', 'ipinfo', 'google', 'default'],
 
     /*
     |--------------------------------------------------------------------------
     | Providers
     |--------------------------------------------------------------------------
     |
-    | The ordered list of provider classes consulted when resolving a location
-    | or a distance. The first provider that returns a non-null result wins,
-    | so order them from most to least specific. Each entry must implement
-    | GeolocationProvider and/or DistanceProvider.
+    | A name => class-string map of the available providers. The package also
+    | accepts the legacy flat-list form (a list of class-strings) for backward
+    | compatibility — each class-string then doubles as its own name.
     |
     */
 
     'providers' => [
-        IpInfoProvider::class,
-        GoogleProvider::class,
-        DefaultLocationProvider::class,
+        'maxmind_database' => MaxMindDatabaseProvider::class,
+        'maxmind_web' => MaxMindWebServiceProvider::class,
+        'ipinfo' => IpInfoProvider::class,
+        'google' => GoogleProvider::class,
+        'default' => DefaultLocationProvider::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Timeout
+    |--------------------------------------------------------------------------
+    |
+    | The request timeout (in seconds) applied to every HTTP-backed provider.
+    |
+    */
+
+    'timeout' => (int) env('GEOLOCATION_TIMEOUT', 5),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cache
+    |--------------------------------------------------------------------------
+    |
+    | Successful (non-null) lookups can be cached so repeated resolutions are
+    | cheap and rate-limit friendly. Failures are never cached.
+    |
+    */
+
+    'cache' => [
+        'enabled' => (bool) env('GEOLOCATION_CACHE', false),
+        'store' => env('GEOLOCATION_CACHE_STORE'),
+        'ttl' => (int) env('GEOLOCATION_CACHE_TTL', 86400),
+        'prefix' => env('GEOLOCATION_CACHE_PREFIX', 'geolocation'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Events
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, the manager dispatches LocationResolved, DistanceResolved
+    | and LocationResolutionFailed events so host apps can react to lookups.
+    |
+    */
+
+    'events' => [
+        'enabled' => (bool) env('GEOLOCATION_EVENTS', true),
     ],
 
     /*
@@ -69,6 +128,26 @@ return [
             'key' => env('GOOGLE_MAPS_API_KEY'),
             'retry' => env('GOOGLE_MAPS_RETRY_TIMES', 3),
             'retry_delay' => env('GOOGLE_MAPS_RETRY_DELAY_MS', 100),
+        ],
+
+        'maxmind' => [
+
+            'web' => [
+                'enabled' => (bool) env('MAXMIND_WEB_ENABLED', false),
+                'base_url' => env('MAXMIND_WEB_URL', 'https://geoip.maxmind.com/geoip/v2.1'),
+                'account_id' => env('MAXMIND_ACCOUNT_ID'),
+                'license_key' => env('MAXMIND_LICENSE_KEY'),
+                'service' => env('MAXMIND_WEB_SERVICE', 'city'), // city|country|insights
+                'retry' => (int) env('MAXMIND_WEB_RETRY_TIMES', 2),
+                'retry_delay' => (int) env('MAXMIND_WEB_RETRY_DELAY_MS', 100),
+            ],
+
+            'database' => [
+                'enabled' => (bool) env('MAXMIND_DB_ENABLED', false),
+                'path' => env('MAXMIND_DB_PATH'),
+                'cache_metadata' => (bool) env('MAXMIND_DB_CACHE_METADATA', true),
+            ],
+
         ],
 
     ],
