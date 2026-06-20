@@ -15,4 +15,9 @@ final class InvalidCoordinatesException extends GeolocationException
     {
         return new self("Longitude [{$longitude}] is out of the range [-180, 180].");
     }
+
+    public static function notCoordinates(): self
+    {
+        return new self('The coordinates attribute must be set to a Coordinates instance or null.');
+    }
 }

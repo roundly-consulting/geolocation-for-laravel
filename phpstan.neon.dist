@@ -2,3 +2,8 @@ parameters:
     level: 7
     paths:
         - src
+    excludePaths:
+        # A consumer-facing Eloquent trait: it is only ever used by host-application
+        # models, so PHPStan (analysing src only) would report it as an unused trait.
+        analyse:
+            - src/Concerns/HasLocation.php
