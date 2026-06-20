@@ -10,7 +10,7 @@ and a configurable default fallback.
 
 ## Requirements
 
-- PHP `^8.3`
+- PHP `^8.4`
 - Laravel `^12.0` or `^13.0`
 
 ## Installation
