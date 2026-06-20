@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Geolocation\Providers;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+use RoundlyConsulting\Geolocation\Exceptions\DatabaseNotFoundException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 use RoundlyConsulting\Geolocation\MaxMind\Reader;
 
@@ -46,8 +47,13 @@ final class MaxMindDatabaseProvider implements GeolocationProvider
         /** @var string|null $path */
         $path = config('geolocation.services.maxmind.database.path');
 
-        // Throws DatabaseNotFoundException when the path is missing/unreadable.
-        return $this->reader = new Reader((string) $path);
+        // Surface a clear, actionable error when the database has not been downloaded yet
+        // rather than the lower-level "not readable" message from the binary reader.
+        if ($path === null || $path === '' || ! is_file($path)) {
+            throw DatabaseNotFoundException::missing($path);
+        }
+
+        return $this->reader = new Reader($path);
     }
 
     /**
