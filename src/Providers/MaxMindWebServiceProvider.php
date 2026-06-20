@@ -1,0 +1,130 @@
+<?php
+
+declare(strict_types=1);
+
+namespace RoundlyConsulting\Geolocation\Providers;
+
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Http;
+use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
+use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
+use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+use RoundlyConsulting\Geolocation\GeolocationProvider;
+
+/**
+ * Resolves a location through the MaxMind GeoIP2 Precision web service using HTTP Basic
+ * auth (account ID + license key) over Laravel's HTTP client.
+ */
+final class MaxMindWebServiceProvider implements GeolocationProvider
+{
+    public function locate(GeolocationQuery $query): ?Location
+    {
+        if (! (bool) config('geolocation.services.maxmind.web.enabled', false)) {
+            return null;
+        }
+
+        if ($query->ipAddress === null || filter_var($query->ipAddress, FILTER_VALIDATE_IP) === false) {
+            return null;
+        }
+
+        $service = $this->service();
+
+        try {
+            $response = $this->client()->get("/{$service}/{$query->ipAddress}");
+        } catch (RequestException) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        /** @var array<string, mixed>|null $body */
+        $body = $response->json();
+
+        if (! is_array($body)) {
+            return null;
+        }
+
+        return $this->toLocation($body);
+    }
+
+    private function service(): string
+    {
+        /** @var string $service */
+        $service = config('geolocation.services.maxmind.web.service', 'city');
+
+        return in_array($service, ['city', 'country', 'insights'], true) ? $service : 'city';
+    }
+
+    private function client(): PendingRequest
+    {
+        return Http::baseUrl(rtrim((string) config('geolocation.services.maxmind.web.base_url'), '/'))
+            ->withBasicAuth(
+                (string) config('geolocation.services.maxmind.web.account_id'),
+                (string) config('geolocation.services.maxmind.web.license_key'),
+            )
+            ->timeout((int) config('geolocation.timeout', 5))
+            ->retry(
+                (int) config('geolocation.services.maxmind.web.retry', 2),
+                (int) config('geolocation.services.maxmind.web.retry_delay', 100),
+            )
+            ->acceptJson();
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     */
+    private function toLocation(array $body): Location
+    {
+        $location = $this->section($body, 'location');
+        $cityName = $this->englishName($this->section($body, 'city'));
+        $countryIso = $this->section($body, 'country')['iso_code'] ?? '';
+        $postal = $this->section($body, 'postal')['code'] ?? '';
+
+        $subdivisions = $body['subdivisions'] ?? [];
+        $firstSubdivision = is_array($subdivisions) && isset($subdivisions[0]) && is_array($subdivisions[0])
+            ? $subdivisions[0]
+            : [];
+        $region = $this->englishName($firstSubdivision);
+
+        return new Location(
+            humanReadable: trim(implode(', ', array_filter([$cityName, $region, (string) $countryIso]))),
+            street: '',
+            city: $cityName,
+            countryIsoCode: (string) $countryIso,
+            latitude: isset($location['latitude']) ? (float) $location['latitude'] : 0.0,
+            longitude: isset($location['longitude']) ? (float) $location['longitude'] : 0.0,
+            type: GeolocationType::Ip,
+            region: $region,
+            postalCode: (string) $postal,
+            timezone: isset($location['time_zone']) ? (string) $location['time_zone'] : '',
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    private function section(array $body, string $key): array
+    {
+        $value = $body[$key] ?? [];
+
+        return is_array($value) ? $value : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $section
+     */
+    private function englishName(array $section): string
+    {
+        $names = $section['names'] ?? [];
+
+        if (is_array($names) && isset($names['en'])) {
+            return (string) $names['en'];
+        }
+
+        return '';
+    }
+}
