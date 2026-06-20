@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Geolocation\Providers;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
+use RoundlyConsulting\Geolocation\Concerns\HasProviderOverrides;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
@@ -14,6 +15,8 @@ use RoundlyConsulting\Geolocation\GeolocationProvider;
 
 final class IpInfoProvider implements GeolocationProvider
 {
+    use HasProviderOverrides;
+
     public function locate(GeolocationQuery $query): ?Location
     {
         if ($query->ipAddress === null || filter_var($query->ipAddress, FILTER_VALIDATE_IP) === false) {
@@ -65,16 +68,19 @@ final class IpInfoProvider implements GeolocationProvider
 
     private function client(): PendingRequest
     {
+        $timeout = $this->override('timeout');
+
         $client = Http::baseUrl(rtrim((string) config('geolocation.services.ipinfo.url'), '/'))
-            ->timeout((int) config('geolocation.timeout', 5))
+            ->timeout($timeout !== null ? (int) $timeout : (int) config('geolocation.timeout', 5))
             ->retry(
                 (int) config('geolocation.services.ipinfo.retry'),
                 (int) config('geolocation.services.ipinfo.retry_delay'),
             )
             ->acceptJson();
 
+        $override = $this->override('token');
         /** @var string|null $token */
-        $token = config('geolocation.services.ipinfo.token');
+        $token = is_string($override) && $override !== '' ? $override : config('geolocation.services.ipinfo.token');
 
         // IPinfo's anonymous tier works without a token; only attach one when present so
         // we never send an empty bearer header.

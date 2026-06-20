@@ -7,7 +7,10 @@ namespace RoundlyConsulting\Geolocation\Providers;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
+use RoundlyConsulting\Geolocation\Concerns\HasProviderOverrides;
+use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Distance;
+use RoundlyConsulting\Geolocation\DataTransferObjects\DistanceMatrix;
 use RoundlyConsulting\Geolocation\DataTransferObjects\DistanceQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
@@ -22,6 +25,8 @@ use RoundlyConsulting\Geolocation\GeolocationProvider;
  */
 final class GoogleProvider implements DistanceProvider, GeolocationProvider
 {
+    use HasProviderOverrides;
+
     public function distance(DistanceQuery $query): ?Distance
     {
         try {
@@ -57,6 +62,90 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
             durationInSeconds: (int) $duration['value'],
             type: $query->type,
         );
+    }
+
+    /**
+     * Resolve a full distance grid between several origins and destinations in a single
+     * Distance Matrix call, degrading to null cells when the API fails or a leg is missing.
+     *
+     * @param  list<Coordinates>  $origins
+     * @param  list<Coordinates>  $destinations
+     */
+    public function distanceMatrix(
+        array $origins,
+        array $destinations,
+        DistanceType $type = DistanceType::Driving,
+    ): DistanceMatrix {
+        $rows = [];
+
+        if ($origins === [] || $destinations === []) {
+            return new DistanceMatrix($origins, $destinations, []);
+        }
+
+        try {
+            $response = $this->client()->get('/distancematrix/json', [
+                'origins' => $this->encode($origins),
+                'destinations' => $this->encode($destinations),
+                'mode' => $type === DistanceType::Driving ? 'driving' : 'walking',
+            ]);
+        } catch (RequestException) {
+            $response = null;
+        }
+
+        /** @var list<array<string, mixed>> $responseRows */
+        $responseRows = $response !== null && $response->successful()
+            ? (array) $response->json('rows', [])
+            : [];
+
+        foreach ($origins as $originIndex => $origin) {
+            $elements = $responseRows[$originIndex]['elements'] ?? [];
+            $cells = [];
+
+            foreach ($destinations as $destinationIndex => $destination) {
+                $element = is_array($elements) ? ($elements[$destinationIndex] ?? null) : null;
+                $cells[$destinationIndex] = is_array($element)
+                    ? $this->elementToDistance($element, $type)
+                    : null;
+            }
+
+            $rows[$originIndex] = $cells;
+        }
+
+        return new DistanceMatrix($origins, $destinations, $rows);
+    }
+
+    /**
+     * @param  array<string, mixed>  $element
+     */
+    private function elementToDistance(array $element, DistanceType $type): ?Distance
+    {
+        if (($element['status'] ?? null) !== 'OK') {
+            return null;
+        }
+
+        /** @var array{text: string, value: int} $distance */
+        $distance = $element['distance'];
+        /** @var array{text: string, value: int} $duration */
+        $duration = $element['duration'];
+
+        return new Distance(
+            humanReadableDistance: $distance['text'],
+            distanceInMeters: (int) $distance['value'],
+            humanReadableDuration: $duration['text'],
+            durationInSeconds: (int) $duration['value'],
+            type: $type,
+        );
+    }
+
+    /**
+     * @param  list<Coordinates>  $points
+     */
+    private function encode(array $points): string
+    {
+        return implode('|', array_map(
+            static fn (Coordinates $point): string => "{$point->latitude},{$point->longitude}",
+            $points,
+        ));
     }
 
     public function locate(GeolocationQuery $query): ?Location
@@ -134,9 +223,14 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
 
     private function client(): PendingRequest
     {
+        $override = $this->override('token');
+        $key = is_string($override) && $override !== '' ? $override : config('geolocation.services.google.key');
+
+        $timeout = $this->override('timeout');
+
         return Http::baseUrl(rtrim((string) config('geolocation.services.google.url'), '/'))
-            ->withQueryParameters(['key' => config('geolocation.services.google.key')])
-            ->timeout((int) config('geolocation.timeout', 5))
+            ->withQueryParameters(['key' => $key])
+            ->timeout($timeout !== null ? (int) $timeout : (int) config('geolocation.timeout', 5))
             ->retry(
                 (int) config('geolocation.services.google.retry'),
                 (int) config('geolocation.services.google.retry_delay'),

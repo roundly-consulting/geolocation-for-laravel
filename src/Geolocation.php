@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Geolocation;
 
 /**
- * @deprecated Use {@see GeolocationManager} (resolved via the Geolocation facade) instead.
- *             Kept for backward compatibility and removed in 2.0.0.
+ * Thin alias of {@see GeolocationManager}. Prefer the `Geolocation` facade
+ * (or resolving {@see GeolocationManager} from the container) in new code.
  */
 final class Geolocation extends GeolocationManager {}

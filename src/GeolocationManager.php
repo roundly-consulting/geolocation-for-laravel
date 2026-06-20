@@ -9,18 +9,27 @@ use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Traits\Macroable;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Distance;
+use RoundlyConsulting\Geolocation\DataTransferObjects\DistanceMatrix;
 use RoundlyConsulting\Geolocation\DataTransferObjects\DistanceQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
+use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\Events\DistanceResolved;
 use RoundlyConsulting\Geolocation\Events\LocationResolutionFailed;
 use RoundlyConsulting\Geolocation\Events\LocationResolved;
 use RoundlyConsulting\Geolocation\Exceptions\UnknownProviderException;
+use RoundlyConsulting\Geolocation\Facades\Geolocation as GeolocationFacade;
+use RoundlyConsulting\Geolocation\Providers\GoogleProvider;
+use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
+use RoundlyConsulting\Geolocation\Testing\FakeGeolocationManager;
 
 class GeolocationManager
 {
+    use Macroable;
+
     /**
      * Custom providers registered at runtime by the host application.
      *
@@ -35,15 +44,45 @@ class GeolocationManager
      */
     private ?array $only = null;
 
+    /**
+     * Call-time provider configuration overrides queued for the next resolution.
+     *
+     * @var array<string, mixed>
+     */
+    private array $overrides = [];
+
+    /**
+     * Swap the bound manager for a recording fake so host-app tests can assert on lookups
+     * without hitting any provider. Seed canned results via $results.
+     *
+     * @param  array<string, Location>  $results
+     */
+    public static function fake(array $results = []): FakeGeolocationManager
+    {
+        $fake = new FakeGeolocationManager($results);
+
+        app()->instance(GeolocationManager::class, $fake);
+
+        // The Geolocation facade caches its resolved instance; clear it so subsequent
+        // facade calls resolve the fake we just bound.
+        GeolocationFacade::clearResolvedInstance(GeolocationManager::class);
+
+        return $fake;
+    }
+
     public function locate(GeolocationQuery $query): ?Location
     {
         if ($this->cacheEnabled()) {
             $cached = $this->cache()->get($this->cacheKey('locate', $query->cacheKey()));
 
             if ($cached instanceof Location) {
+                $this->resetScope();
+
                 return $cached;
             }
         }
+
+        $this->applyOverrides();
 
         $resolved = $this->resolveLocation($query);
 
@@ -51,9 +90,59 @@ class GeolocationManager
             $this->cache()->put($this->cacheKey('locate', $query->cacheKey()), $resolved, $this->cacheTtl());
         }
 
-        $this->only = null;
+        $this->resetScope();
 
         return $resolved;
+    }
+
+    /**
+     * Resolve several IP addresses at once, returning a name-preserving map of results
+     * (null where a lookup failed). Failures never abort the batch.
+     *
+     * @param  list<string>  $ips
+     * @return array<string, Location|null>
+     */
+    public function batch(array $ips): array
+    {
+        $results = [];
+
+        foreach ($ips as $ip) {
+            try {
+                $results[$ip] = $this->locateIp($ip);
+            } catch (\Throwable) {
+                $results[$ip] = null;
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Resolve a distance grid between several origins and destinations via the Google
+     * Distance Matrix provider, degrading gracefully when it is unavailable.
+     *
+     * @param  list<Coordinates>  $origins
+     * @param  list<Coordinates>  $destinations
+     */
+    public function distanceMatrix(
+        array $origins,
+        array $destinations,
+        DistanceType $type = DistanceType::Driving,
+    ): DistanceMatrix {
+        $this->applyOverrides();
+
+        foreach ($this->resolveProviders() as $provider) {
+            if ($provider instanceof GoogleProvider) {
+                $matrix = $provider->distanceMatrix($origins, $destinations, $type);
+                $this->resetScope();
+
+                return $matrix;
+            }
+        }
+
+        $this->resetScope();
+
+        return new DistanceMatrix($origins, $destinations, []);
     }
 
     public function distance(DistanceQuery $query): ?Distance
@@ -62,11 +151,13 @@ class GeolocationManager
             $cached = $this->cache()->get($this->cacheKey('distance', $query->cacheKey()));
 
             if ($cached instanceof Distance) {
-                $this->only = null;
+                $this->resetScope();
 
                 return $cached;
             }
         }
+
+        $this->applyOverrides();
 
         $resolved = null;
         $providerName = null;
@@ -93,7 +184,7 @@ class GeolocationManager
             $this->dispatch(new DistanceResolved($query, $resolved, (string) $providerName));
         }
 
-        $this->only = null;
+        $this->resetScope();
 
         return $resolved;
     }
@@ -142,6 +233,68 @@ class GeolocationManager
         $this->only = array_values($providers);
 
         return $this;
+    }
+
+    /**
+     * Scope the next resolution to a single provider (alias of using() for one name).
+     */
+    public function provider(string $name): self
+    {
+        $this->only = [$name];
+
+        return $this;
+    }
+
+    /**
+     * Override the API token/key the provider(s) use for the next resolution only.
+     */
+    public function withToken(#[\SensitiveParameter] string $token): self
+    {
+        $this->overrides['token'] = $token;
+
+        return $this;
+    }
+
+    /**
+     * Override the HTTP timeout (seconds) the provider(s) use for the next resolution only.
+     */
+    public function withTimeout(int $seconds): self
+    {
+        $this->overrides['timeout'] = $seconds;
+
+        return $this;
+    }
+
+    /**
+     * Merge arbitrary call-time overrides applied to the provider(s) for the next
+     * resolution only, without mutating global config.
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    public function withConfig(array $overrides): self
+    {
+        $this->overrides = array_merge($this->overrides, $overrides);
+
+        return $this;
+    }
+
+    private function applyOverrides(): void
+    {
+        if ($this->overrides === [] || ! app()->bound(ProviderOverrides::class)) {
+            return;
+        }
+
+        app(ProviderOverrides::class)->merge($this->overrides);
+    }
+
+    private function resetScope(): void
+    {
+        $this->only = null;
+        $this->overrides = [];
+
+        if (app()->bound(ProviderOverrides::class)) {
+            app(ProviderOverrides::class)->reset();
+        }
     }
 
     private function resolveLocation(GeolocationQuery $query): ?Location
@@ -252,7 +405,9 @@ class GeolocationManager
 
     private function cacheEnabled(): bool
     {
-        return $this->only === null && (bool) config('geolocation.cache.enabled', false);
+        return $this->only === null
+            && $this->overrides === []
+            && (bool) config('geolocation.cache.enabled', false);
     }
 
     private function cache(): Repository
