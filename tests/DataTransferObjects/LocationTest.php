@@ -45,3 +45,38 @@ it('creates instance from defaults', function () {
         ->longitude->toBe(789.1011)
         ->type->toBe(GeolocationType::Default);
 });
+
+it('exposes its coordinates as a value object', function () {
+    $coordinates = (new Location('x', '', 'c', 'CC', 12.34, 56.78, GeolocationType::Ip))->coordinates();
+
+    expect($coordinates->latitude)->toBe(12.34)->and($coordinates->longitude)->toBe(56.78);
+});
+
+it('serializes to an array and json with the new fields', function () {
+    $location = new Location(
+        humanReadable: 'Somewhere, Pretty',
+        street: 'Somewhere',
+        city: 'Pretty',
+        countryIsoCode: 'SM',
+        latitude: 12.34,
+        longitude: 56.78,
+        type: GeolocationType::Ip,
+        region: 'Region',
+        postalCode: '99999',
+        timezone: 'Europe/Bratislava',
+    );
+
+    expect($location->toArray())->toBe([
+        'humanReadable' => 'Somewhere, Pretty',
+        'street' => 'Somewhere',
+        'city' => 'Pretty',
+        'region' => 'Region',
+        'postalCode' => '99999',
+        'countryIsoCode' => 'SM',
+        'latitude' => 12.34,
+        'longitude' => 56.78,
+        'timezone' => 'Europe/Bratislava',
+        'type' => 'IP',
+    ])->and($location->jsonSerialize())->toBe($location->toArray())
+        ->and(json_decode((string) json_encode($location), true)['region'])->toBe('Region');
+});
