@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use RoundlyConsulting\Geolocation\Providers\DefaultLocationProvider;
 use RoundlyConsulting\Geolocation\Providers\GoogleProvider;
+use RoundlyConsulting\Geolocation\Providers\IP2LocationProvider;
 use RoundlyConsulting\Geolocation\Providers\IpInfoProvider;
 use RoundlyConsulting\Geolocation\Providers\MaxMindDatabaseProvider;
 use RoundlyConsulting\Geolocation\Providers\MaxMindWebServiceProvider;
@@ -22,7 +23,7 @@ return [
     |
     */
 
-    'pipeline' => ['maxmind_database', 'maxmind_web', 'ipinfo', 'google', 'default'],
+    'pipeline' => ['maxmind_database', 'maxmind_web', 'ip2location', 'ipinfo', 'google', 'default'],
 
     /*
     |--------------------------------------------------------------------------
@@ -38,6 +39,7 @@ return [
     'providers' => [
         'maxmind_database' => MaxMindDatabaseProvider::class,
         'maxmind_web' => MaxMindWebServiceProvider::class,
+        'ip2location' => IP2LocationProvider::class,
         'ipinfo' => IpInfoProvider::class,
         'google' => GoogleProvider::class,
         'default' => DefaultLocationProvider::class,
@@ -130,6 +132,13 @@ return [
             'retry_delay' => env('GOOGLE_MAPS_RETRY_DELAY_MS', 100),
         ],
 
+        'ip2location' => [
+            'url' => env('IP2LOCATION_URL', 'https://api.ip2location.io'),
+            'key' => env('IP2LOCATION_API_KEY'),
+            'retry' => (int) env('IP2LOCATION_RETRY_TIMES', 2),
+            'retry_delay' => (int) env('IP2LOCATION_RETRY_DELAY_MS', 100),
+        ],
+
         'maxmind' => [
 
             'web' => [
@@ -144,8 +153,14 @@ return [
 
             'database' => [
                 'enabled' => (bool) env('MAXMIND_DB_ENABLED', false),
-                'path' => env('MAXMIND_DB_PATH'),
+                'path' => env('MAXMIND_DB_PATH', storage_path('app/geolocation/GeoLite2-City.mmdb')),
                 'cache_metadata' => (bool) env('MAXMIND_DB_CACHE_METADATA', true),
+
+                // Used by the geolocation:db:update command to download the .mmdb file.
+                'account_id' => env('MAXMIND_ACCOUNT_ID'),
+                'license_key' => env('MAXMIND_LICENSE_KEY'),
+                'edition' => env('MAXMIND_DB_EDITION', 'GeoLite2-City'),
+                'download_url' => env('MAXMIND_DB_DOWNLOAD_URL', 'https://download.maxmind.com/app/geoip_download'),
             ],
 
         ],
