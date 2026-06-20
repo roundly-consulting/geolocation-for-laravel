@@ -22,6 +22,23 @@ All notable changes to `geolocation-for-laravel` will be documented in this file
 - Typed exceptions under `RoundlyConsulting\Geolocation\Exceptions`.
 - `Arrayable` + `JsonSerializable` on `Location` and `Distance`; `region`, `postalCode`, and
   `timezone` fields on `Location`.
+- **IP2Location.io** provider (`ip2location`) over Laravel's HTTP client.
+- `geolocation:db:update` artisan command that downloads/refreshes the MaxMind GeoLite2/
+  GeoIP2 `.mmdb` file natively (gzip + PharData, no new dependency); the local-database
+  provider now throws an actionable exception pointing at it when the file is missing.
+- Single-provider selection via config or at runtime: `Geolocation::provider('ipinfo')`
+  and `Geolocation::using('maxmind_database')`.
+- `Geolocation::batch([...ips])` bulk lookups with graceful per-item failure.
+- `Geolocation::distanceMatrix($origins, $destinations)` multi-point distance via Google.
+- Geofencing helpers on `Coordinates`: `near()`, `within()` (point-in-polygon),
+  `bearingTo()`, `midpointTo()`, `boundingBox()`, plus a `BoundingBox` value object.
+- `HasLocation` Eloquent trait + `CoordinatesCast` to store/restore `Coordinates` on models,
+  with a `withinRadius()` query scope.
+- `Rule::coordinates()` validation rule and a `$request->location()` macro.
+- `Geolocation::fake()` recording test double with `assertLocated()`, `assertProviderUsed()`,
+  and `assertNothingLocated()` helpers.
+- Per-resolution provider overrides: `withToken()`, `withTimeout()`, `withConfig()`; the
+  manager is now `Macroable`.
 
 ### Changed
 
@@ -29,8 +46,3 @@ All notable changes to `geolocation-for-laravel` will be documented in this file
   `geolocation.pipeline` controls consultation order.
 - IPinfo provider hardened: request timeout, token-less anonymous mode, IP validation, and
   richer field parsing.
-
-### Deprecated
-
-- `RoundlyConsulting\Geolocation\Geolocation` — use the `Geolocation` facade /
-  `GeolocationManager` instead. Removed in 2.0.

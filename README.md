@@ -2,9 +2,11 @@
 
 Resolve a client's location (from an IP address, coordinates, or a street address) and the
 travel distance between two points through a pluggable, provider-based pipeline. Ships with
-**IPinfo**, **Google**, and **MaxMind** providers — including a fully **native `.mmdb`
-reader** (no third-party MaxMind SDK) — plus a configurable default fallback, a real facade,
-caching, events, and an artisan command.
+**IPinfo**, **IP2Location**, **Google**, and **MaxMind** providers — including a fully
+**native `.mmdb` reader** (no third-party MaxMind SDK) and a `geolocation:db:update` command
+that downloads the database for you — plus geofencing helpers, an Eloquent coordinates cast,
+a validation rule, a request macro, batch and matrix lookups, a test fake, caching, events,
+and a configurable default fallback.
 
 ## Requirements
 
@@ -42,6 +44,7 @@ successful resolution can be cached and dispatches an event.
 |---|---|---|---|---|
 | `maxmind_database` | `MaxMindDatabaseProvider` | yes (by IP) | no | local `.mmdb` file (native reader) |
 | `maxmind_web` | `MaxMindWebServiceProvider` | yes (by IP) | no | MaxMind GeoIP2 Precision web service |
+| `ip2location` | `IP2LocationProvider` | yes (by IP) | no | [ip2location.io](https://www.ip2location.io) HTTP API |
 | `ipinfo` | `IpInfoProvider` | yes (by IP) | no | [ipinfo.io](https://ipinfo.io) HTTP API |
 | `google` | `GoogleProvider` | yes (by coordinates **or** address) | yes | Google Geocoding + Distance Matrix |
 | `default` | `DefaultLocationProvider` | yes (static fallback) | no | config values |
@@ -49,6 +52,19 @@ successful resolution can be cached and dispatches an event.
 Both MaxMind providers are **disabled by default** and return `null` immediately until you
 enable them and supply credentials / a database path, so the package works out of the box with
 just IPinfo, Google, and the default fallback.
+
+### Running a single provider
+
+You don't need to configure every provider. To run exactly one, either set the `pipeline`
+(and `providers`) to a single name in config, or pin it per call:
+
+```php
+Geolocation::provider('ipinfo')->locateIp($request->ip());
+Geolocation::using('maxmind_database')->locateIp($request->ip());
+```
+
+`provider()` / `using()` restrict that one resolution to the named provider(s) only — no
+other provider needs to be configured.
 
 ## Usage
 
@@ -121,6 +137,114 @@ $distance?->durationInSeconds;     // 5400
 $location = Geolocation::using('maxmind_database', 'ipinfo')->locateIp($request->ip());
 ```
 
+### Batch lookups
+
+Resolve many IPs at once. Failures are isolated per item — the batch never aborts:
+
+```php
+$results = Geolocation::batch(['8.8.8.8', '1.1.1.1', '203.0.113.7']);
+
+$results['8.8.8.8']?->city;   // a Location or null per IP
+```
+
+### Distance matrix
+
+Resolve a grid of distances between several origins and destinations in one call (Google
+Distance Matrix). Unavailable legs degrade to `null`:
+
+```php
+use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
+
+$matrix = Geolocation::distanceMatrix(
+    origins: [new Coordinates(48.14, 17.10)],
+    destinations: [new Coordinates(49.20, 16.60), new Coordinates(50.07, 14.43)],
+);
+
+$matrix->get(0, 1)?->distanceInMeters;
+```
+
+### Geofencing helpers on `Coordinates`
+
+```php
+use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
+
+$here = new Coordinates(48.1486, 17.1077);
+
+$here->near(new Coordinates(48.21, 16.37), radiusKm: 100);  // bool
+$here->within([$a, $b, $c, $d]);                            // point-in-polygon, bool
+$here->bearingTo($there);                                   // initial bearing, degrees
+$here->midpointTo($there);                                  // Coordinates
+$box = $here->boundingBox(radiusKm: 10);                    // BoundingBox
+$box->contains($point);                                     // bool
+```
+
+### Storing coordinates on a model
+
+Cast latitude/longitude columns to a `Coordinates` value object with the `HasLocation` trait,
+which also adds a `withinRadius()` query scope (a cheap bounding-box pre-filter):
+
+```php
+use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Geolocation\Concerns\HasLocation;
+use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
+
+final class Store extends Model
+{
+    use HasLocation; // casts a `coordinates` attribute over `latitude`/`longitude` columns
+}
+
+$store = new Store;
+$store->coordinates = new Coordinates(48.1486, 17.1077);
+$store->save();
+
+Store::query()->withinRadius(new Coordinates(48.15, 17.11), radiusKm: 5)->get();
+```
+
+You can also apply the cast directly: `protected $casts = ['coordinates' => CoordinatesCast::class];`.
+
+### Validation rule & request macro
+
+```php
+use Illuminate\Validation\Rule;
+
+$request->validate([
+    'point' => [Rule::coordinates()],   // "lat,lng", [lat, lng], or ['latitude'=>…, 'longitude'=>…]
+]);
+
+$location = $request->location();        // resolves the client's Location from its IP
+```
+
+### Per-call provider overrides
+
+Tweak a provider's token or timeout for one resolution without touching global config:
+
+```php
+Geolocation::withToken('runtime-token')->locateIp('8.8.8.8');
+Geolocation::withTimeout(10)->locateIp('8.8.8.8');
+Geolocation::withConfig(['token' => '…', 'timeout' => 3])->locateIp('8.8.8.8');
+```
+
+The `GeolocationManager` is also `Macroable`, so host apps can add their own methods.
+
+### Testing with the fake
+
+Swap the manager for a recording fake in your host-app tests — no network, canned results:
+
+```php
+use RoundlyConsulting\Geolocation\Facades\Geolocation;
+
+$fake = Geolocation::fake(['8.8.8.8' => $expectedLocation]);
+
+$this->get('/checkout');
+
+$fake->assertLocated('8.8.8.8');
+$fake->assertProviderUsed('ipinfo');
+$fake->assertNothingLocated();
+```
+
+Seed more results fluently with `$fake->seed($key, $location)`, `seedDefault()`, and
+`seedDistance()`.
+
 ### Registering a custom provider
 
 Register a closure provider at runtime (e.g. in a service provider's `boot()`), then add its
@@ -177,6 +301,13 @@ php artisan geolocation:locate 8.8.8.8 --json
 The command exits non-zero when nothing resolves — handy for smoke-testing credentials and
 your `.mmdb` wiring.
 
+Download or refresh the MaxMind database (see below):
+
+```bash
+php artisan geolocation:db:update
+php artisan geolocation:db:update --edition=GeoLite2-Country --path=/var/data/geo.mmdb
+```
+
 ## MaxMind local database (native `.mmdb` reader)
 
 The `maxmind_database` provider reads a local MaxMind `.mmdb` file (GeoLite2 / GeoIP2) using a
@@ -186,11 +317,23 @@ your own MaxMind licence:
 
 ```dotenv
 MAXMIND_DB_ENABLED=true
-MAXMIND_DB_PATH=/var/data/GeoLite2-City.mmdb
+MAXMIND_DB_PATH=/var/data/GeoLite2-City.mmdb   # defaults to storage_path('app/geolocation/GeoLite2-City.mmdb')
 ```
 
-A missing or unreadable path throws `DatabaseNotFoundException`; a corrupt file throws
-`InvalidDatabaseException`. A lookup that simply isn't in the database returns `null`.
+A corrupt file throws `InvalidDatabaseException`. A lookup that simply isn't in the database
+returns `null`. When the provider is enabled but the database file is missing, it throws a
+`DatabaseNotFoundException` whose message tells you to run `php artisan geolocation:db:update`.
+
+### Downloading the database
+
+`geolocation:db:update` fetches the GeoLite2/GeoIP2 `.mmdb` from MaxMind and writes it to the
+configured path, unpacking the gzipped tarball natively (no extra dependency). Configure a
+MaxMind account and license key:
+
+```dotenv
+MAXMIND_LICENSE_KEY=your-license-key
+MAXMIND_DB_EDITION=GeoLite2-City   # GeoLite2-City | GeoLite2-Country | a GeoIP2 edition
+```
 
 ## MaxMind web service
 
@@ -209,7 +352,7 @@ Published to `config/geolocation.php`. Every key:
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `pipeline` | `list<string>` | all five names | Ordered provider names to consult. |
+| `pipeline` | `list<string>` | all bundled provider names | Ordered provider names to consult. |
 | `providers` | `array<string, class-string>` | the bundled map | Name → provider class. Legacy flat lists still work. |
 | `timeout` | `int` | `5` | HTTP timeout in seconds (`GEOLOCATION_TIMEOUT`). |
 | `cache.enabled` | `bool` | `false` | Cache successful lookups (`GEOLOCATION_CACHE`). |
@@ -226,6 +369,10 @@ Published to `config/geolocation.php`. Every key:
 | `services.google.key` | `?string` | `null` | Google Maps API key (`GOOGLE_MAPS_API_KEY`). |
 | `services.google.retry` | `int` | `3` | Retry attempts (`GOOGLE_MAPS_RETRY_TIMES`). |
 | `services.google.retry_delay` | `int` | `100` | Retry delay in ms (`GOOGLE_MAPS_RETRY_DELAY_MS`). |
+| `services.ip2location.url` | `string` | `https://api.ip2location.io` | IP2Location.io base URL (`IP2LOCATION_URL`). |
+| `services.ip2location.key` | `?string` | `null` | IP2Location.io API key (`IP2LOCATION_API_KEY`). |
+| `services.ip2location.retry` | `int` | `2` | Retry attempts (`IP2LOCATION_RETRY_TIMES`). |
+| `services.ip2location.retry_delay` | `int` | `100` | Retry delay in ms (`IP2LOCATION_RETRY_DELAY_MS`). |
 | `services.maxmind.web.enabled` | `bool` | `false` | Enable the web-service provider (`MAXMIND_WEB_ENABLED`). |
 | `services.maxmind.web.base_url` | `string` | GeoIP2 base | Web-service base URL (`MAXMIND_WEB_URL`). |
 | `services.maxmind.web.account_id` | `?string` | `null` | MaxMind account ID (`MAXMIND_ACCOUNT_ID`). |
@@ -234,21 +381,23 @@ Published to `config/geolocation.php`. Every key:
 | `services.maxmind.web.retry` | `int` | `2` | Retry attempts (`MAXMIND_WEB_RETRY_TIMES`). |
 | `services.maxmind.web.retry_delay` | `int` | `100` | Retry delay in ms (`MAXMIND_WEB_RETRY_DELAY_MS`). |
 | `services.maxmind.database.enabled` | `bool` | `false` | Enable the local `.mmdb` provider (`MAXMIND_DB_ENABLED`). |
-| `services.maxmind.database.path` | `?string` | `null` | Absolute path to the `.mmdb` file (`MAXMIND_DB_PATH`). |
+| `services.maxmind.database.path` | `string` | `storage_path('app/geolocation/GeoLite2-City.mmdb')` | Path to the `.mmdb` file (`MAXMIND_DB_PATH`). |
 | `services.maxmind.database.cache_metadata` | `bool` | `true` | Reuse parsed metadata within a request (`MAXMIND_DB_CACHE_METADATA`). |
+| `services.maxmind.database.account_id` | `?string` | `null` | MaxMind account ID for downloads (`MAXMIND_ACCOUNT_ID`). |
+| `services.maxmind.database.license_key` | `?string` | `null` | MaxMind license key for downloads (`MAXMIND_LICENSE_KEY`). |
+| `services.maxmind.database.edition` | `string` | `GeoLite2-City` | Edition the update command downloads (`MAXMIND_DB_EDITION`). |
+| `services.maxmind.database.download_url` | `string` | MaxMind download endpoint | Download URL base (`MAXMIND_DB_DOWNLOAD_URL`). |
 
-## Upgrade notes (1.0 → 1.1)
+## Notes
 
-This release is **backward compatible**:
-
-- The old `RoundlyConsulting\Geolocation\Geolocation` service still works but is
-  **deprecated** — prefer the `RoundlyConsulting\Geolocation\Facades\Geolocation` facade /
-  `GeolocationManager`. It is removed in 2.0.
-- The `providers` config now accepts a **named map** (name → class). The previous flat list of
-  class-strings keeps working.
-- `GeolocationQuery`/`DistanceQuery` gained named constructors and an optional `address`
-  parameter; existing positional calls are unchanged.
-- `Location` gained optional `region`, `postalCode`, and `timezone` fields (default `''`).
+- Prefer the `RoundlyConsulting\Geolocation\Facades\Geolocation` facade (or resolving
+  `GeolocationManager` from the container). `RoundlyConsulting\Geolocation\Geolocation` is a
+  thin alias kept for convenience.
+- The `providers` config accepts either a **named map** (name → class) or a flat list of
+  class-strings.
+- `GeolocationQuery`/`DistanceQuery` provide named constructors
+  (`forIp`/`forAddress`/`forCoordinates`, `between`).
+- `Location` exposes optional `region`, `postalCode`, and `timezone` fields (default `''`).
 
 ## Testing
 
