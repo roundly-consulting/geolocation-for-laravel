@@ -1,6 +1,9 @@
 # Path-based git attributes
 # https://www.kernel.org/pub/software/scm/git/docs/gitattributes.html
 
+# Treat MaxMind test databases as binary.
+*.mmdb              binary
+
 # Ignore all test and documentation with "export-ignore".
 /.github            export-ignore
 /.gitattributes     export-ignore
