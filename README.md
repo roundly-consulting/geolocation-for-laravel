@@ -21,6 +21,36 @@ and a configurable default fallback.
 - PHP `^8.4`
 - Laravel `^12.0` or `^13.0`
 
+## Integrates with
+
+This package builds on two other roundly-consulting packages (hard dependencies):
+
+- **[`roundly-consulting/enums-for-laravel`](https://github.com/roundly-consulting/enums-for-laravel)** —
+  the `DistanceType` and `GeolocationType` enums adopt its `Helpers` trait, so you get
+  `values()`, `labels()`, `options()`/`toOptions()`, `validationRule()`, `tryFromName()`,
+  `is()`/`isIn()`, and the `when*` guards for free.
+- **[`roundly-consulting/http-client-rate-limits-for-laravel`](https://github.com/roundly-consulting/http-client-rate-limits-for-laravel)** —
+  every outbound HTTP provider (`google`, `ipinfo`, `ip2location`, `maxmind_web`) is paced
+  through its client-side limiter with adaptive `Retry-After` backoff. See
+  [Rate limiting outbound requests](#rate-limiting-outbound-requests).
+
+Until these are published to Packagist they resolve by path (sibling checkouts) locally and
+by VCS on CI, so no extra setup is needed when they sit alongside this package.
+
+### Enum helpers
+
+```php
+use RoundlyConsulting\Geolocation\Enum\DistanceType;
+use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+
+DistanceType::values();            // ['Walking', 'Driving']
+DistanceType::validationRule();    // 'in:Walking,Driving'
+DistanceType::toOptions();         // ['Walking' => 'Walking', 'Driving' => 'Driving'] — ready for <select>
+
+GeolocationType::values();         // ['Default', 'IP', 'Geolocation']
+GeolocationType::Ip->value;        // 'IP' (wire value is preserved)
+```
+
 ## Installation
 
 ```bash
@@ -354,6 +384,75 @@ MAXMIND_LICENSE_KEY=your-license-key
 MAXMIND_WEB_SERVICE=city   # city | country | insights
 ```
 
+## Rate limiting outbound requests
+
+Each HTTP-backed provider — `google`, `ipinfo`, `ip2location`, `maxmind_web` — routes its
+sends through
+[`http-client-rate-limits-for-laravel`](https://github.com/roundly-consulting/http-client-rate-limits-for-laravel),
+so you proactively **pace** calls to third-party geocoders/IP APIs instead of hammering them
+and eating `429`s. Each provider carries its own `rate_limits` block under
+`services.<provider>` and is keyed independently as `geolocation:{provider}:{owner}` (a
+distinct budget per API/quota). The offline `maxmind_database` (`.mmdb` reader) and `default`
+providers make no network calls and are never throttled.
+
+Default behaviour is **pace** — the limiter waits until the window frees, then sends. Set a
+`max_wait` (milliseconds) to **fail fast** instead: when a deferral would exceed it, a
+`RoundlyConsulting\Geolocation\Exceptions\RateLimitExceededException` is thrown (it extends
+`GeolocationException` and carries `->provider` and `->availableInSeconds`). With `adaptive`
+on (the default), a provider's `429` `Retry-After` self-tunes the limiter — the throttled
+sends use `->retry(throw: false)` so the `429` reaches the limiter to record the server
+penalty (the provider still degrades that failed response to `null` as before).
+
+The biggest practical win is bulk work: `Geolocation::batch([...ips])` and
+`Geolocation::distanceMatrix($origins, $destinations)` loop through a single provider window,
+so they now pace automatically under that provider's budget.
+
+Default budgets (all adaptive, pace-by-default):
+
+| Provider | `limit` / `per` | Env |
+|---|---|---|
+| `google` | `50` / `second` | `GEOLOCATION_GOOGLE_RATELIMIT`, `..._PER` |
+| `ipinfo` | `60` / `minute` | `GEOLOCATION_IPINFO_RATELIMIT`, `..._PER` |
+| `ip2location` | `60` / `minute` | `GEOLOCATION_IP2LOCATION_RATELIMIT`, `..._PER` |
+| `maxmind_web` | `60` / `minute` | `GEOLOCATION_MAXMIND_WEB_RATELIMIT`, `..._PER` |
+
+Per-provider `rate_limits` keys (shown for `google`; each provider mirrors them):
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `enabled` | `bool` | `true` | `false` sends with a plain client (`GEOLOCATION_GOOGLE_RATELIMIT_ENABLED`). |
+| `owner` | `string` | `app` | Budget owner segment of the key (`GEOLOCATION_RATELIMIT_OWNER`, shared). |
+| `limit` | `int` | provider default | Max requests per window (`GEOLOCATION_GOOGLE_RATELIMIT`). |
+| `per` | `string` | `second`/`minute` | Window: `second`, `minute`, `hour`, `day` (`GEOLOCATION_GOOGLE_RATELIMIT_PER`). |
+| `adaptive` | `bool` | `true` | Honour `429` `Retry-After` (`GEOLOCATION_GOOGLE_RATELIMIT_ADAPTIVE`). |
+| `max_wait` | `?int` | `null` | Fail-fast ceiling in ms; null paces (`GEOLOCATION_GOOGLE_RATELIMIT_MAX_WAIT`). |
+| `jitter` | `?int` | `null` | Random spread in ms added to defers (`GEOLOCATION_GOOGLE_RATELIMIT_JITTER`). |
+
+**Nominatim / OSM (the poster-child strict limit).** OpenStreetMap's Nominatim enforces a
+hard **1 request/second** policy. If you register it as a custom provider, pace it like:
+
+```php
+'nominatim' => [
+    // ...your provider settings...
+    'rate_limits' => [
+        'enabled'  => true,
+        'limit'    => 1,
+        'per'      => 'second',
+        'adaptive' => true,
+    ],
+],
+```
+
+**Shared budgets across workers.** hcrl defaults to an in-memory store (per process — fine
+for a single worker or CLI run). For an account quota shared across workers/servers, point
+hcrl at a Cache/Redis/Database store via its own config
+(`http-client-rate-limits.store` / `HTTP_CLIENT_RATE_LIMITS_STORE`); this package does not
+force a store.
+
+**Native retry still applies.** Each provider keeps Laravel's `->retry(times, delay)` for
+transient connection resilience; the rate limiter is an additional, outgoing-side pacing
+layer, not a replacement.
+
 ## Configuration
 
 Published to `config/geolocation.php`. Every key:
@@ -395,6 +494,16 @@ Published to `config/geolocation.php`. Every key:
 | `services.maxmind.database.license_key` | `?string` | `null` | MaxMind license key for downloads (`MAXMIND_LICENSE_KEY`). |
 | `services.maxmind.database.edition` | `string` | `GeoLite2-City` | Edition the update command downloads (`MAXMIND_DB_EDITION`). |
 | `services.maxmind.database.download_url` | `string` | MaxMind download endpoint | Download URL base (`MAXMIND_DB_DOWNLOAD_URL`). |
+| `services.<provider>.rate_limits.enabled` | `bool` | `true` | Throttle the provider's sends; `false` = plain client. |
+| `services.<provider>.rate_limits.owner` | `string` | `app` | Owner segment of the budget key (`GEOLOCATION_RATELIMIT_OWNER`). |
+| `services.<provider>.rate_limits.limit` | `int` | `50` (google) / `60` | Max requests per window. |
+| `services.<provider>.rate_limits.per` | `string` | `second` (google) / `minute` | Window: `second`/`minute`/`hour`/`day`. |
+| `services.<provider>.rate_limits.adaptive` | `bool` | `true` | Honour the provider's `429` `Retry-After`. |
+| `services.<provider>.rate_limits.max_wait` | `?int` | `null` | Fail-fast ceiling in ms; null = pace (wait). |
+| `services.<provider>.rate_limits.jitter` | `?int` | `null` | Random spread in ms added to defers. |
+
+The `rate_limits` block exists on the four HTTP providers (`google`, `ipinfo`,
+`ip2location`, `maxmind.web`). See [Rate limiting outbound requests](#rate-limiting-outbound-requests).
 
 ## Notes
 
