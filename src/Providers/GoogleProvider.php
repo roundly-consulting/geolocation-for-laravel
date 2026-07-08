@@ -6,8 +6,10 @@ namespace RoundlyConsulting\Geolocation\Providers;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Geolocation\Concerns\HasProviderOverrides;
+use RoundlyConsulting\Geolocation\Concerns\InteractsWithRateLimits;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Distance;
 use RoundlyConsulting\Geolocation\DataTransferObjects\DistanceMatrix;
@@ -26,15 +28,16 @@ use RoundlyConsulting\Geolocation\GeolocationProvider;
 final class GoogleProvider implements DistanceProvider, GeolocationProvider
 {
     use HasProviderOverrides;
+    use InteractsWithRateLimits;
 
     public function distance(DistanceQuery $query): ?Distance
     {
         try {
-            $response = $this->client()->get('/distancematrix/json', [
+            $response = $this->throttled('google', 'google', fn (): Response => $this->client()->get('/distancematrix/json', [
                 'origins' => "{$query->fromLatitude},{$query->fromLongitude}",
                 'destinations' => "{$query->toLatitude},{$query->toLongitude}",
                 'mode' => $query->type === DistanceType::Driving ? 'driving' : 'walking',
-            ]);
+            ]));
         } catch (RequestException) {
             return null;
         }
@@ -83,11 +86,11 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
         }
 
         try {
-            $response = $this->client()->get('/distancematrix/json', [
+            $response = $this->throttled('google', 'google', fn (): Response => $this->client()->get('/distancematrix/json', [
                 'origins' => $this->encode($origins),
                 'destinations' => $this->encode($destinations),
                 'mode' => $type === DistanceType::Driving ? 'driving' : 'walking',
-            ]);
+            ]));
         } catch (RequestException) {
             $response = null;
         }
@@ -157,7 +160,7 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
         }
 
         try {
-            $response = $this->client()->get('/geocode/json', $parameters);
+            $response = $this->throttled('google', 'google', fn (): Response => $this->client()->get('/geocode/json', $parameters));
         } catch (RequestException) {
             return null;
         }
@@ -234,6 +237,7 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
             ->retry(
                 (int) config('geolocation.services.google.retry'),
                 (int) config('geolocation.services.google.retry_delay'),
+                throw: false,
             )
             ->acceptJson();
     }

@@ -6,8 +6,10 @@ namespace RoundlyConsulting\Geolocation\Providers;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Geolocation\Concerns\HasProviderOverrides;
+use RoundlyConsulting\Geolocation\Concerns\InteractsWithRateLimits;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
@@ -20,6 +22,7 @@ use RoundlyConsulting\Geolocation\GeolocationProvider;
 final class IP2LocationProvider implements GeolocationProvider
 {
     use HasProviderOverrides;
+    use InteractsWithRateLimits;
 
     public function locate(GeolocationQuery $query): ?Location
     {
@@ -28,10 +31,10 @@ final class IP2LocationProvider implements GeolocationProvider
         }
 
         try {
-            $response = $this->client()->get('/', [
+            $response = $this->throttled('ip2location', 'ip2location', fn (): Response => $this->client()->get('/', [
                 'key' => $this->override('token') ?? config('geolocation.services.ip2location.key'),
                 'ip' => $query->ipAddress,
-            ]);
+            ]));
         } catch (RequestException) {
             return null;
         }
@@ -89,6 +92,7 @@ final class IP2LocationProvider implements GeolocationProvider
             ->retry(
                 (int) config('geolocation.services.ip2location.retry', 2),
                 (int) config('geolocation.services.ip2location.retry_delay', 100),
+                throw: false,
             )
             ->acceptJson();
     }

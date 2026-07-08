@@ -6,7 +6,9 @@ namespace RoundlyConsulting\Geolocation\Providers;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use RoundlyConsulting\Geolocation\Concerns\InteractsWithRateLimits;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
@@ -18,6 +20,8 @@ use RoundlyConsulting\Geolocation\GeolocationProvider;
  */
 final class MaxMindWebServiceProvider implements GeolocationProvider
 {
+    use InteractsWithRateLimits;
+
     public function locate(GeolocationQuery $query): ?Location
     {
         if (! (bool) config('geolocation.services.maxmind.web.enabled', false)) {
@@ -31,7 +35,7 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
         $service = $this->service();
 
         try {
-            $response = $this->client()->get("/{$service}/{$query->ipAddress}");
+            $response = $this->throttled('maxmind_web', 'maxmind.web', fn (): Response => $this->client()->get("/{$service}/{$query->ipAddress}"));
         } catch (RequestException) {
             return null;
         }
@@ -69,6 +73,7 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
             ->retry(
                 (int) config('geolocation.services.maxmind.web.retry', 2),
                 (int) config('geolocation.services.maxmind.web.retry_delay', 100),
+                throw: false,
             )
             ->acceptJson();
     }

@@ -6,8 +6,10 @@ namespace RoundlyConsulting\Geolocation\Providers;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Geolocation\Concerns\HasProviderOverrides;
+use RoundlyConsulting\Geolocation\Concerns\InteractsWithRateLimits;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
@@ -16,6 +18,7 @@ use RoundlyConsulting\Geolocation\GeolocationProvider;
 final class IpInfoProvider implements GeolocationProvider
 {
     use HasProviderOverrides;
+    use InteractsWithRateLimits;
 
     public function locate(GeolocationQuery $query): ?Location
     {
@@ -24,7 +27,7 @@ final class IpInfoProvider implements GeolocationProvider
         }
 
         try {
-            $response = $this->client()->get("/{$query->ipAddress}/json");
+            $response = $this->throttled('ipinfo', 'ipinfo', fn (): Response => $this->client()->get("/{$query->ipAddress}/json"));
         } catch (RequestException) {
             return null;
         }
@@ -75,6 +78,7 @@ final class IpInfoProvider implements GeolocationProvider
             ->retry(
                 (int) config('geolocation.services.ipinfo.retry'),
                 (int) config('geolocation.services.ipinfo.retry_delay'),
+                throw: false,
             )
             ->acceptJson();
 

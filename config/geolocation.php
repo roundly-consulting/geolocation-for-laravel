@@ -118,11 +118,31 @@ return [
 
     'services' => [
 
+        /*
+        | Each HTTP-backed provider carries a "rate_limits" block that paces its
+        | outbound calls through the http-client-rate-limits package, keyed
+        | "geolocation:{provider}:{owner}". Requests wait until the window frees
+        | (pace) by default; set "max_wait" (ms) to fail fast with a
+        | RateLimitExceededException instead. With "adaptive" on, a provider's
+        | 429 "Retry-After" self-tunes the limiter. Set "enabled" => false to
+        | send with a plain client. The offline MaxMind database and default
+        | providers make no network calls and are never throttled.
+        */
+
         'ipinfo' => [
             'url' => env('IPINFO_URL', 'https://ipinfo.io/'),
             'token' => env('IPINFO_TOKEN'),
             'retry' => env('IPINFO_RETRY_TIMES', 3),
             'retry_delay' => env('IPINFO_RETRY_DELAY_MS', 100),
+            'rate_limits' => [
+                'enabled' => (bool) env('GEOLOCATION_IPINFO_RATELIMIT_ENABLED', true),
+                'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
+                'limit' => (int) env('GEOLOCATION_IPINFO_RATELIMIT', 60),
+                'per' => env('GEOLOCATION_IPINFO_RATELIMIT_PER', 'minute'), // second|minute|hour|day
+                'adaptive' => (bool) env('GEOLOCATION_IPINFO_RATELIMIT_ADAPTIVE', true),
+                'max_wait' => env('GEOLOCATION_IPINFO_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
+                'jitter' => env('GEOLOCATION_IPINFO_RATELIMIT_JITTER'), // ms; null = none
+            ],
         ],
 
         'google' => [
@@ -130,6 +150,15 @@ return [
             'key' => env('GOOGLE_MAPS_API_KEY'),
             'retry' => env('GOOGLE_MAPS_RETRY_TIMES', 3),
             'retry_delay' => env('GOOGLE_MAPS_RETRY_DELAY_MS', 100),
+            'rate_limits' => [
+                'enabled' => (bool) env('GEOLOCATION_GOOGLE_RATELIMIT_ENABLED', true),
+                'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
+                'limit' => (int) env('GEOLOCATION_GOOGLE_RATELIMIT', 50),
+                'per' => env('GEOLOCATION_GOOGLE_RATELIMIT_PER', 'second'), // second|minute|hour|day
+                'adaptive' => (bool) env('GEOLOCATION_GOOGLE_RATELIMIT_ADAPTIVE', true),
+                'max_wait' => env('GEOLOCATION_GOOGLE_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
+                'jitter' => env('GEOLOCATION_GOOGLE_RATELIMIT_JITTER'), // ms; null = none
+            ],
         ],
 
         'ip2location' => [
@@ -137,6 +166,15 @@ return [
             'key' => env('IP2LOCATION_API_KEY'),
             'retry' => (int) env('IP2LOCATION_RETRY_TIMES', 2),
             'retry_delay' => (int) env('IP2LOCATION_RETRY_DELAY_MS', 100),
+            'rate_limits' => [
+                'enabled' => (bool) env('GEOLOCATION_IP2LOCATION_RATELIMIT_ENABLED', true),
+                'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
+                'limit' => (int) env('GEOLOCATION_IP2LOCATION_RATELIMIT', 60),
+                'per' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_PER', 'minute'), // second|minute|hour|day
+                'adaptive' => (bool) env('GEOLOCATION_IP2LOCATION_RATELIMIT_ADAPTIVE', true),
+                'max_wait' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
+                'jitter' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_JITTER'), // ms; null = none
+            ],
         ],
 
         'maxmind' => [
@@ -149,6 +187,15 @@ return [
                 'service' => env('MAXMIND_WEB_SERVICE', 'city'), // city|country|insights
                 'retry' => (int) env('MAXMIND_WEB_RETRY_TIMES', 2),
                 'retry_delay' => (int) env('MAXMIND_WEB_RETRY_DELAY_MS', 100),
+                'rate_limits' => [
+                    'enabled' => (bool) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ENABLED', true),
+                    'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
+                    'limit' => (int) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT', 60),
+                    'per' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_PER', 'minute'), // second|minute|hour|day
+                    'adaptive' => (bool) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ADAPTIVE', true),
+                    'max_wait' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
+                    'jitter' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_JITTER'), // ms; null = none
+                ],
             ],
 
             'database' => [
