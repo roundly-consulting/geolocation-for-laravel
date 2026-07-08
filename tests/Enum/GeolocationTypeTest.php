@@ -17,10 +17,10 @@ it('builds a validation rule from its values', function (): void {
     expect(GeolocationType::validationRule())->toBe('in:Default,IP,Geolocation');
 });
 
-it('derives readable labels from the backed values without an override', function (): void {
-    // No bespoke label seam: the trait headlines the backed value, so "IP"
-    // renders as "I P". Accepted as-is (hosts may override in their view layer).
-    expect(GeolocationType::Ip->readable())->toBe('I P')
+it('derives readable labels, preserving the IP acronym', function (): void {
+    // Ip overrides readable() to keep the "IP" acronym (the trait would headline
+    // the backed value "IP" to "I P"); other cases use the trait's headline.
+    expect(GeolocationType::Ip->readable())->toBe('IP')
         ->and(GeolocationType::Default->readable())->toBe('Default')
         ->and(GeolocationType::Geolocation->readable())->toBe('Geolocation');
 });
