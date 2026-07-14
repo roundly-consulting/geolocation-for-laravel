@@ -4,20 +4,43 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Geolocation;
 
-use Illuminate\Foundation\AliasLoader;
-use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Geolocation\Commands\LocateCommand;
 use RoundlyConsulting\Geolocation\Commands\UpdateDatabaseCommand;
 use RoundlyConsulting\Geolocation\Facades\Geolocation as GeolocationFacade;
 use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
 use RoundlyConsulting\Geolocation\Support\RequestMacro;
 use RoundlyConsulting\Geolocation\Support\ValidationRules;
+use RoundlyConsulting\PackageToolkit\Package;
+use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 
-final class GeolocationServiceProvider extends ServiceProvider
+final class GeolocationServiceProvider extends PackageServiceProvider
 {
+    public function configurePackage(Package $package): void
+    {
+        $package
+            ->name('geolocation')
+            ->hasConfigFile()
+            ->hasCommands([
+                LocateCommand::class,
+                UpdateDatabaseCommand::class,
+            ])
+            ->hasFacadeAlias(GeolocationFacade::class)
+            ->contributesToAbout(static function (): array {
+                $pipeline = config('geolocation.pipeline', []);
+
+                return [
+                    'Pipeline' => is_array($pipeline) && $pipeline !== []
+                        ? implode(', ', array_map(strval(...), $pipeline))
+                        : 'NONE',
+                    'Cache' => config('geolocation.cache.enabled') === true ? 'ENABLED' : 'OFF',
+                    'Events' => config('geolocation.events.enabled') === true ? 'ENABLED' : 'OFF',
+                ];
+            });
+    }
+
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/geolocation.php', 'geolocation');
+        parent::register();
 
         $this->app->singleton(ProviderOverrides::class);
         $this->app->singleton(GeolocationManager::class);
@@ -26,22 +49,9 @@ final class GeolocationServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        if (class_exists(AliasLoader::class)) {
-            AliasLoader::getInstance()->alias('Geolocation', GeolocationFacade::class);
-        }
+        parent::boot();
 
         ValidationRules::register();
         RequestMacro::register();
-
-        if ($this->app->runningInConsole()) {
-            $this->commands([
-                LocateCommand::class,
-                UpdateDatabaseCommand::class,
-            ]);
-
-            $this->publishes([
-                __DIR__.'/../config/geolocation.php' => config_path('geolocation.php'),
-            ], 'geolocation-config');
-        }
     }
 }
