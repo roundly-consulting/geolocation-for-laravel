@@ -15,6 +15,7 @@ use RoundlyConsulting\Geolocation\Providers\IpInfoProvider;
 use RoundlyConsulting\Geolocation\Providers\MaxMindDatabaseProvider;
 use RoundlyConsulting\Geolocation\Providers\MaxMindWebServiceProvider;
 use RoundlyConsulting\HttpClientRateLimits\Facades\RateLimits;
+use RoundlyConsulting\PackageToolkit\Contracts\HasRetryAfter;
 
 beforeEach(function (): void {
     // A single attempt keeps faked failures from looping through native retries.
@@ -106,8 +107,9 @@ it('throws a native RateLimitExceededException when max_wait is exceeded', funct
         $this->fail('Expected a RateLimitExceededException to be thrown.');
     } catch (GeolocationException $exception) {
         expect($exception)->toBeInstanceOf(RateLimitExceededException::class)
+            ->and($exception)->toBeInstanceOf(HasRetryAfter::class)
             ->and($exception->provider)->toBe('ipinfo')
-            ->and($exception->availableInSeconds)->toBeGreaterThan(0);
+            ->and($exception->retryAfterSeconds())->toBeGreaterThan(0);
     }
 });
 

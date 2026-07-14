@@ -23,8 +23,12 @@ and a configurable default fallback.
 
 ## Integrates with
 
-This package builds on two other roundly-consulting packages (hard dependencies):
+This package builds on three other roundly-consulting packages (hard dependencies):
 
+- **[`roundly-consulting/package-toolkit-for-laravel`](https://github.com/roundly-consulting/package-toolkit-for-laravel)** —
+  the service provider is declared through its fluent `Package` builder (config, commands,
+  facade alias, `php artisan about` section), and `RateLimitExceededException` implements its
+  `HasRetryAfter` contract.
 - **[`roundly-consulting/enums-for-laravel`](https://github.com/roundly-consulting/enums-for-laravel)** —
   the `DistanceType` and `GeolocationType` enums adopt its `Helpers` trait, so you get
   `values()`, `labels()`, `options()`/`toOptions()`, `validationRule()`, `tryFromName()`,
@@ -398,7 +402,8 @@ providers make no network calls and are never throttled.
 Default behaviour is **pace** — the limiter waits until the window frees, then sends. Set a
 `max_wait` (milliseconds) to **fail fast** instead: when a deferral would exceed it, a
 `RoundlyConsulting\Geolocation\Exceptions\RateLimitExceededException` is thrown (it extends
-`GeolocationException` and carries `->provider` and `->availableInSeconds`). With `adaptive`
+`GeolocationException`, carries `->provider`, and implements the toolkit's `HasRetryAfter`
+contract — `->retryAfterSeconds()` gives you the value for a `Retry-After` header). With `adaptive`
 on (the default), a provider's `429` `Retry-After` self-tunes the limiter — the throttled
 sends use `->retry(throw: false)` so the `429` reaches the limiter to record the server
 penalty (the provider still degrades that failed response to `null` as before).
