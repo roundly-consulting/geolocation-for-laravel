@@ -31,11 +31,10 @@ ArchPresets::strictTypes('RoundlyConsulting\Geolocation');
  * key to police while its late-static-binding ban would have nothing to say either.
  * Both halves are structurally inert here.
  */
-ArchPresets::finalByDefault('RoundlyConsulting\Geolocation')
-    ->ignoring([
-        GeolocationManager::class,
-        GeolocationException::class,
-    ]);
+ArchPresets::finalByDefault('RoundlyConsulting\Geolocation', [
+    GeolocationManager::class,
+    GeolocationException::class,
+]);
 
 /**
  * Geolocation does no cryptography. The ban is a standing guard against an API
