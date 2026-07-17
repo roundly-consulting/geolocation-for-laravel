@@ -21,7 +21,7 @@ final class MaxMindDatabaseProvider implements GeolocationProvider
 
     public function locate(GeolocationQuery $query): ?Location
     {
-        if (! (bool) config('geolocation.services.maxmind.database.enabled', false)) {
+        if (! (bool) config('geolocation.services.maxmind_database.enabled', false)) {
             return null;
         }
 
@@ -45,7 +45,7 @@ final class MaxMindDatabaseProvider implements GeolocationProvider
         }
 
         /** @var string|null $path */
-        $path = config('geolocation.services.maxmind.database.path');
+        $path = config('geolocation.services.maxmind_database.path');
 
         // Surface a clear, actionable error when the database has not been downloaded yet
         // rather than the lower-level "not readable" message from the binary reader.

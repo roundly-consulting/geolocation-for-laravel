@@ -31,7 +31,7 @@ final class IP2LocationProvider implements GeolocationProvider
         }
 
         try {
-            $response = $this->throttled('ip2location', 'ip2location', fn (): Response => $this->client()->get('/', [
+            $response = $this->throttled('ip2location', fn (): Response => $this->client()->get('/', [
                 'key' => $this->override('token') ?? config('geolocation.services.ip2location.key'),
                 'ip' => $query->ipAddress,
             ]));

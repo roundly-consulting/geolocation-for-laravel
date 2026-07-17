@@ -24,7 +24,7 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
 
     public function locate(GeolocationQuery $query): ?Location
     {
-        if (! (bool) config('geolocation.services.maxmind.web.enabled', false)) {
+        if (! (bool) config('geolocation.services.maxmind_web.enabled', false)) {
             return null;
         }
 
@@ -35,7 +35,7 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
         $service = $this->service();
 
         try {
-            $response = $this->throttled('maxmind_web', 'maxmind.web', fn (): Response => $this->client()->get("/{$service}/{$query->ipAddress}"));
+            $response = $this->throttled('maxmind_web', fn (): Response => $this->client()->get("/{$service}/{$query->ipAddress}"));
         } catch (RequestException) {
             return null;
         }
@@ -57,22 +57,22 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
     private function service(): string
     {
         /** @var string $service */
-        $service = config('geolocation.services.maxmind.web.service', 'city');
+        $service = config('geolocation.services.maxmind_web.service', 'city');
 
         return in_array($service, ['city', 'country', 'insights'], true) ? $service : 'city';
     }
 
     private function client(): PendingRequest
     {
-        return Http::baseUrl(rtrim((string) config('geolocation.services.maxmind.web.base_url'), '/'))
+        return Http::baseUrl(rtrim((string) config('geolocation.services.maxmind_web.base_url'), '/'))
             ->withBasicAuth(
-                (string) config('geolocation.services.maxmind.web.account_id'),
-                (string) config('geolocation.services.maxmind.web.license_key'),
+                (string) config('geolocation.services.maxmind_web.account_id'),
+                (string) config('geolocation.services.maxmind_web.license_key'),
             )
             ->timeout((int) config('geolocation.timeout', 5))
             ->retry(
-                (int) config('geolocation.services.maxmind.web.retry', 2),
-                (int) config('geolocation.services.maxmind.web.retry_delay', 100),
+                (int) config('geolocation.services.maxmind_web.retry', 2),
+                (int) config('geolocation.services.maxmind_web.retry_delay', 100),
                 throw: false,
             )
             ->acceptJson();

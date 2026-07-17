@@ -9,11 +9,11 @@ use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Providers\MaxMindWebServiceProvider;
 
 beforeEach(function (): void {
-    config()->set('geolocation.services.maxmind.web.enabled', true);
-    config()->set('geolocation.services.maxmind.web.base_url', 'https://geoip.maxmind.com/geoip/v2.1');
-    config()->set('geolocation.services.maxmind.web.account_id', '123456');
-    config()->set('geolocation.services.maxmind.web.license_key', 'license-key');
-    config()->set('geolocation.services.maxmind.web.service', 'city');
+    config()->set('geolocation.services.maxmind_web.enabled', true);
+    config()->set('geolocation.services.maxmind_web.base_url', 'https://geoip.maxmind.com/geoip/v2.1');
+    config()->set('geolocation.services.maxmind_web.account_id', '123456');
+    config()->set('geolocation.services.maxmind_web.license_key', 'license-key');
+    config()->set('geolocation.services.maxmind_web.service', 'city');
 });
 
 function cityResponse(): array
@@ -28,7 +28,7 @@ function cityResponse(): array
 }
 
 it('returns null when disabled', function (): void {
-    config()->set('geolocation.services.maxmind.web.enabled', false);
+    config()->set('geolocation.services.maxmind_web.enabled', false);
 
     expect((new MaxMindWebServiceProvider)->locate(new GeolocationQuery('81.2.69.142')))->toBeNull();
 
@@ -68,7 +68,7 @@ it('maps a city response and sends basic auth', function (): void {
 });
 
 it('uses the configured service path', function (): void {
-    config()->set('geolocation.services.maxmind.web.service', 'insights');
+    config()->set('geolocation.services.maxmind_web.service', 'insights');
 
     Http::fake([
         'geoip.maxmind.com/geoip/v2.1/insights/81.2.69.142' => Http::response(cityResponse()),
@@ -80,7 +80,7 @@ it('uses the configured service path', function (): void {
 });
 
 it('falls back to the city service for an unknown service name', function (): void {
-    config()->set('geolocation.services.maxmind.web.service', 'bogus');
+    config()->set('geolocation.services.maxmind_web.service', 'bogus');
 
     Http::fake([
         'geoip.maxmind.com/geoip/v2.1/city/81.2.69.142' => Http::response(cityResponse()),

@@ -22,7 +22,7 @@ beforeEach(function (): void {
     config()->set('geolocation.services.ipinfo.retry', 1);
     config()->set('geolocation.services.google.retry', 1);
     config()->set('geolocation.services.ip2location.retry', 1);
-    config()->set('geolocation.services.maxmind.web.retry', 1);
+    config()->set('geolocation.services.maxmind_web.retry', 1);
 });
 
 function googleGeocodeFake(): array
@@ -68,7 +68,7 @@ it('paces an allowed ip2location lookup under the ip2location key', function ():
 });
 
 it('paces an allowed maxmind web lookup under the maxmind_web key', function (): void {
-    config()->set('geolocation.services.maxmind.web.enabled', true);
+    config()->set('geolocation.services.maxmind_web.enabled', true);
     $fake = RateLimits::fake();
     Http::fake(['geoip.maxmind.com/*' => Http::response([
         'country' => ['iso_code' => 'US'],
@@ -175,8 +175,8 @@ it('never throttles the offline default provider', function (): void {
 });
 
 it('never throttles the offline maxmind database provider', function (): void {
-    config()->set('geolocation.services.maxmind.database.enabled', true);
-    config()->set('geolocation.services.maxmind.database.path', __DIR__.'/../Fixtures/test-data/GeoIP2-City-Test.mmdb');
+    config()->set('geolocation.services.maxmind_database.enabled', true);
+    config()->set('geolocation.services.maxmind_database.path', __DIR__.'/../Fixtures/test-data/GeoIP2-City-Test.mmdb');
     $fake = RateLimits::fake();
 
     (new MaxMindDatabaseProvider)->locate(new GeolocationQuery('2.125.160.216'));

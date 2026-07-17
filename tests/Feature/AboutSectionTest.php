@@ -19,9 +19,9 @@ it('renders the pipeline without disclosing a provider credential', function ():
     config()->set('geolocation.services.google.key', 'AIzaSyD-google-maps-live-key');
     config()->set('geolocation.services.ipinfo.token', 'ipinfo-live-token-value');
     config()->set('geolocation.services.ip2location.key', 'ip2location-live-key');
-    config()->set('geolocation.services.maxmind.database.license_key', 'maxmind-license-key-value');
-    config()->set('geolocation.services.maxmind.web.account_id', '123456');
-    config()->set('geolocation.services.maxmind.web.license_key', 'maxmind-web-license-key');
+    config()->set('geolocation.services.maxmind_database.license_key', 'maxmind-license-key-value');
+    config()->set('geolocation.services.maxmind_web.account_id', '123456');
+    config()->set('geolocation.services.maxmind_web.license_key', 'maxmind-web-license-key');
     config()->set('geolocation.cache.enabled', true);
     config()->set('geolocation.events.enabled', true);
     config()->set('geolocation.pipeline', ['ipinfo', 'google']);

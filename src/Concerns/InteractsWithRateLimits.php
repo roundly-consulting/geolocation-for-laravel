@@ -17,9 +17,8 @@ use RoundlyConsulting\HttpClientRateLimits\RateLimit;
  *
  * Each provider funnels its sends through a per-provider budget keyed
  * `geolocation:{provider}:{owner}`, read from its own
- * `geolocation.services.{provider}.rate_limits` config block. The `$configKey`
- * argument names the config path (it differs from the budget key only for the
- * nested MaxMind web service, whose config lives at `services.maxmind.web`).
+ * `geolocation.services.{provider}.rate_limits` config block — one name, used by the
+ * `providers` map, the `pipeline`, the budget key, and the config section alike.
  */
 trait InteractsWithRateLimits
 {
@@ -32,10 +31,10 @@ trait InteractsWithRateLimits
      * on (the default) the limiter also honours the provider's own
      * `Retry-After` / `X-RateLimit-*` headers on a 429.
      */
-    protected function rateLimiter(string $provider, string $configKey): ?RateLimit
+    protected function rateLimiter(string $provider): ?RateLimit
     {
         /** @var array<string, mixed> $config */
-        $config = config("geolocation.services.{$configKey}.rate_limits", []);
+        $config = config("geolocation.services.{$provider}.rate_limits", []);
 
         if (($config['enabled'] ?? true) === false) {
             return null;
@@ -72,9 +71,9 @@ trait InteractsWithRateLimits
      *
      * @param  Closure(): Response  $send
      */
-    protected function throttled(string $provider, string $configKey, Closure $send): Response
+    protected function throttled(string $provider, Closure $send): Response
     {
-        $rateLimit = $this->rateLimiter($provider, $configKey);
+        $rateLimit = $this->rateLimiter($provider);
 
         if ($rateLimit === null) {
             return $send();

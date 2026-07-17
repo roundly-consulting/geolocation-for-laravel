@@ -10,7 +10,7 @@ final class DatabaseNotFoundException extends GeolocationException
     {
         return new self(
             $path === null || $path === ''
-                ? 'No MaxMind database path is configured (geolocation.services.maxmind.database.path).'
+                ? 'No MaxMind database path is configured (geolocation.services.maxmind_database.path).'
                 : "The MaxMind database at [{$path}] does not exist or is not readable.",
         );
     }
@@ -18,7 +18,7 @@ final class DatabaseNotFoundException extends GeolocationException
     public static function missing(?string $path): self
     {
         $location = $path === null || $path === ''
-            ? 'No MaxMind database path is configured (geolocation.services.maxmind.database.path).'
+            ? 'No MaxMind database path is configured (geolocation.services.maxmind_database.path).'
             : "The MaxMind database at [{$path}] does not exist.";
 
         return new self(

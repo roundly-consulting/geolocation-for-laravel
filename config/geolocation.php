@@ -127,6 +127,8 @@ return [
         | 429 "Retry-After" self-tunes the limiter. Set "enabled" => false to
         | send with a plain client. The offline MaxMind database and default
         | providers make no network calls and are never throttled.
+        |
+        | Each key here is a provider name from the "providers" map above.
         */
 
         'ipinfo' => [
@@ -177,39 +179,33 @@ return [
             ],
         ],
 
-        'maxmind' => [
-
-            'web' => [
-                'enabled' => (bool) env('MAXMIND_WEB_ENABLED', false),
-                'base_url' => env('MAXMIND_WEB_URL', 'https://geoip.maxmind.com/geoip/v2.1'),
-                'account_id' => env('MAXMIND_ACCOUNT_ID'),
-                'license_key' => env('MAXMIND_LICENSE_KEY'),
-                'service' => env('MAXMIND_WEB_SERVICE', 'city'), // city|country|insights
-                'retry' => (int) env('MAXMIND_WEB_RETRY_TIMES', 2),
-                'retry_delay' => (int) env('MAXMIND_WEB_RETRY_DELAY_MS', 100),
-                'rate_limits' => [
-                    'enabled' => (bool) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ENABLED', true),
-                    'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
-                    'limit' => (int) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT', 60),
-                    'per' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_PER', 'minute'), // second|minute|hour|day
-                    'adaptive' => (bool) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ADAPTIVE', true),
-                    'max_wait' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
-                    'jitter' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_JITTER'), // ms; null = none
-                ],
+        'maxmind_web' => [
+            'enabled' => (bool) env('MAXMIND_WEB_ENABLED', false),
+            'base_url' => env('MAXMIND_WEB_URL', 'https://geoip.maxmind.com/geoip/v2.1'),
+            'account_id' => env('MAXMIND_ACCOUNT_ID'),
+            'license_key' => env('MAXMIND_LICENSE_KEY'),
+            'service' => env('MAXMIND_WEB_SERVICE', 'city'), // city|country|insights
+            'retry' => (int) env('MAXMIND_WEB_RETRY_TIMES', 2),
+            'retry_delay' => (int) env('MAXMIND_WEB_RETRY_DELAY_MS', 100),
+            'rate_limits' => [
+                'enabled' => (bool) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ENABLED', true),
+                'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
+                'limit' => (int) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT', 60),
+                'per' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_PER', 'minute'), // second|minute|hour|day
+                'adaptive' => (bool) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ADAPTIVE', true),
+                'max_wait' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
+                'jitter' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_JITTER'), // ms; null = none
             ],
+        ],
 
-            'database' => [
-                'enabled' => (bool) env('MAXMIND_DB_ENABLED', false),
-                'path' => env('MAXMIND_DB_PATH', storage_path('app/geolocation/GeoLite2-City.mmdb')),
-                'cache_metadata' => (bool) env('MAXMIND_DB_CACHE_METADATA', true),
+        'maxmind_database' => [
+            'enabled' => (bool) env('MAXMIND_DB_ENABLED', false),
+            'path' => env('MAXMIND_DB_PATH', storage_path('app/geolocation/GeoLite2-City.mmdb')),
 
-                // Used by the geolocation:db:update command to download the .mmdb file.
-                'account_id' => env('MAXMIND_ACCOUNT_ID'),
-                'license_key' => env('MAXMIND_LICENSE_KEY'),
-                'edition' => env('MAXMIND_DB_EDITION', 'GeoLite2-City'),
-                'download_url' => env('MAXMIND_DB_DOWNLOAD_URL', 'https://download.maxmind.com/app/geoip_download'),
-            ],
-
+            // Used by the geolocation:db:update command to download the .mmdb file.
+            'license_key' => env('MAXMIND_LICENSE_KEY'),
+            'edition' => env('MAXMIND_DB_EDITION', 'GeoLite2-City'),
+            'download_url' => env('MAXMIND_DB_DOWNLOAD_URL', 'https://download.maxmind.com/app/geoip_download'),
         ],
 
     ],

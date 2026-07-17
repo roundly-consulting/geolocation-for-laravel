@@ -14,12 +14,12 @@ function cityDatabasePath(): string
 }
 
 beforeEach(function (): void {
-    config()->set('geolocation.services.maxmind.database.enabled', true);
-    config()->set('geolocation.services.maxmind.database.path', cityDatabasePath());
+    config()->set('geolocation.services.maxmind_database.enabled', true);
+    config()->set('geolocation.services.maxmind_database.path', cityDatabasePath());
 });
 
 it('returns null when the database provider is disabled', function (): void {
-    config()->set('geolocation.services.maxmind.database.enabled', false);
+    config()->set('geolocation.services.maxmind_database.enabled', false);
 
     expect((new MaxMindDatabaseProvider)->locate(new GeolocationQuery('2.125.160.216')))->toBeNull();
 });
@@ -51,7 +51,7 @@ it('returns null for an ip absent from the database', function (): void {
 });
 
 it('throws when the configured database path is missing', function (): void {
-    config()->set('geolocation.services.maxmind.database.path', null);
+    config()->set('geolocation.services.maxmind_database.path', null);
 
     (new MaxMindDatabaseProvider)->locate(new GeolocationQuery('2.125.160.216'));
 })->throws(DatabaseNotFoundException::class);

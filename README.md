@@ -485,20 +485,18 @@ Published to `config/geolocation.php`. Every key:
 | `services.ip2location.key` | `?string` | `null` | IP2Location.io API key (`IP2LOCATION_API_KEY`). |
 | `services.ip2location.retry` | `int` | `2` | Retry attempts (`IP2LOCATION_RETRY_TIMES`). |
 | `services.ip2location.retry_delay` | `int` | `100` | Retry delay in ms (`IP2LOCATION_RETRY_DELAY_MS`). |
-| `services.maxmind.web.enabled` | `bool` | `false` | Enable the web-service provider (`MAXMIND_WEB_ENABLED`). |
-| `services.maxmind.web.base_url` | `string` | GeoIP2 base | Web-service base URL (`MAXMIND_WEB_URL`). |
-| `services.maxmind.web.account_id` | `?string` | `null` | MaxMind account ID (`MAXMIND_ACCOUNT_ID`). |
-| `services.maxmind.web.license_key` | `?string` | `null` | MaxMind license key (`MAXMIND_LICENSE_KEY`). |
-| `services.maxmind.web.service` | `string` | `city` | `city`, `country`, or `insights` (`MAXMIND_WEB_SERVICE`). |
-| `services.maxmind.web.retry` | `int` | `2` | Retry attempts (`MAXMIND_WEB_RETRY_TIMES`). |
-| `services.maxmind.web.retry_delay` | `int` | `100` | Retry delay in ms (`MAXMIND_WEB_RETRY_DELAY_MS`). |
-| `services.maxmind.database.enabled` | `bool` | `false` | Enable the local `.mmdb` provider (`MAXMIND_DB_ENABLED`). |
-| `services.maxmind.database.path` | `string` | `storage_path('app/geolocation/GeoLite2-City.mmdb')` | Path to the `.mmdb` file (`MAXMIND_DB_PATH`). |
-| `services.maxmind.database.cache_metadata` | `bool` | `true` | Reuse parsed metadata within a request (`MAXMIND_DB_CACHE_METADATA`). |
-| `services.maxmind.database.account_id` | `?string` | `null` | MaxMind account ID for downloads (`MAXMIND_ACCOUNT_ID`). |
-| `services.maxmind.database.license_key` | `?string` | `null` | MaxMind license key for downloads (`MAXMIND_LICENSE_KEY`). |
-| `services.maxmind.database.edition` | `string` | `GeoLite2-City` | Edition the update command downloads (`MAXMIND_DB_EDITION`). |
-| `services.maxmind.database.download_url` | `string` | MaxMind download endpoint | Download URL base (`MAXMIND_DB_DOWNLOAD_URL`). |
+| `services.maxmind_web.enabled` | `bool` | `false` | Enable the web-service provider (`MAXMIND_WEB_ENABLED`). |
+| `services.maxmind_web.base_url` | `string` | GeoIP2 base | Web-service base URL (`MAXMIND_WEB_URL`). |
+| `services.maxmind_web.account_id` | `?string` | `null` | MaxMind account ID (`MAXMIND_ACCOUNT_ID`). |
+| `services.maxmind_web.license_key` | `?string` | `null` | MaxMind license key (`MAXMIND_LICENSE_KEY`). |
+| `services.maxmind_web.service` | `string` | `city` | `city`, `country`, or `insights` (`MAXMIND_WEB_SERVICE`). |
+| `services.maxmind_web.retry` | `int` | `2` | Retry attempts (`MAXMIND_WEB_RETRY_TIMES`). |
+| `services.maxmind_web.retry_delay` | `int` | `100` | Retry delay in ms (`MAXMIND_WEB_RETRY_DELAY_MS`). |
+| `services.maxmind_database.enabled` | `bool` | `false` | Enable the local `.mmdb` provider (`MAXMIND_DB_ENABLED`). |
+| `services.maxmind_database.path` | `string` | `storage_path('app/geolocation/GeoLite2-City.mmdb')` | Path to the `.mmdb` file (`MAXMIND_DB_PATH`). |
+| `services.maxmind_database.license_key` | `?string` | `null` | MaxMind license key for downloads (`MAXMIND_LICENSE_KEY`). |
+| `services.maxmind_database.edition` | `string` | `GeoLite2-City` | Edition the update command downloads (`MAXMIND_DB_EDITION`). |
+| `services.maxmind_database.download_url` | `string` | MaxMind download endpoint | Download URL base (`MAXMIND_DB_DOWNLOAD_URL`). |
 | `services.<provider>.rate_limits.enabled` | `bool` | `true` | Throttle the provider's sends; `false` = plain client. |
 | `services.<provider>.rate_limits.owner` | `string` | `app` | Owner segment of the budget key (`GEOLOCATION_RATELIMIT_OWNER`). |
 | `services.<provider>.rate_limits.limit` | `int` | `50` (google) / `60` | Max requests per window. |
@@ -508,7 +506,7 @@ Published to `config/geolocation.php`. Every key:
 | `services.<provider>.rate_limits.jitter` | `?int` | `null` | Random spread in ms added to defers. |
 
 The `rate_limits` block exists on the four HTTP providers (`google`, `ipinfo`,
-`ip2location`, `maxmind.web`). See [Rate limiting outbound requests](#rate-limiting-outbound-requests).
+`ip2location`, `maxmind_web`). See [Rate limiting outbound requests](#rate-limiting-outbound-requests).
 
 ## Notes
 

@@ -27,7 +27,7 @@ final class IpInfoProvider implements GeolocationProvider
         }
 
         try {
-            $response = $this->throttled('ipinfo', 'ipinfo', fn (): Response => $this->client()->get("/{$query->ipAddress}/json"));
+            $response = $this->throttled('ipinfo', fn (): Response => $this->client()->get("/{$query->ipAddress}/json"));
         } catch (RequestException) {
             return null;
         }

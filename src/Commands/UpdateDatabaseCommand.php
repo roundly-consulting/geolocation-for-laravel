@@ -25,12 +25,12 @@ final class UpdateDatabaseCommand extends Command
 
     public function handle(): int
     {
-        $licenseKey = (string) config('geolocation.services.maxmind.database.license_key');
+        $licenseKey = (string) config('geolocation.services.maxmind_database.license_key');
 
         if ($licenseKey === '') {
             $this->components->error(
                 'A MaxMind license key is required. Set MAXMIND_LICENSE_KEY '
-                .'(geolocation.services.maxmind.database.license_key).'
+                .'(geolocation.services.maxmind_database.license_key).'
             );
 
             return self::FAILURE;
@@ -42,7 +42,7 @@ final class UpdateDatabaseCommand extends Command
         if ($destination === '') {
             $this->components->error(
                 'No destination path is configured. Set MAXMIND_DB_PATH '
-                .'(geolocation.services.maxmind.database.path) or pass --path.'
+                .'(geolocation.services.maxmind_database.path) or pass --path.'
             );
 
             return self::FAILURE;
@@ -82,7 +82,7 @@ final class UpdateDatabaseCommand extends Command
             return $edition;
         }
 
-        return (string) config('geolocation.services.maxmind.database.edition', 'GeoLite2-City');
+        return (string) config('geolocation.services.maxmind_database.edition', 'GeoLite2-City');
     }
 
     private function destinationPath(): string
@@ -94,7 +94,7 @@ final class UpdateDatabaseCommand extends Command
         }
 
         /** @var string|null $configured */
-        $configured = config('geolocation.services.maxmind.database.path');
+        $configured = config('geolocation.services.maxmind_database.path');
 
         return (string) ($configured ?? '');
     }
@@ -105,7 +105,7 @@ final class UpdateDatabaseCommand extends Command
     private function download(string $edition, string $licenseKey): string
     {
         $baseUrl = (string) config(
-            'geolocation.services.maxmind.database.download_url',
+            'geolocation.services.maxmind_database.download_url',
             'https://download.maxmind.com/app/geoip_download'
         );
 

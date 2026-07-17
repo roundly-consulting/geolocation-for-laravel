@@ -33,7 +33,7 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
     public function distance(DistanceQuery $query): ?Distance
     {
         try {
-            $response = $this->throttled('google', 'google', fn (): Response => $this->client()->get('/distancematrix/json', [
+            $response = $this->throttled('google', fn (): Response => $this->client()->get('/distancematrix/json', [
                 'origins' => "{$query->fromLatitude},{$query->fromLongitude}",
                 'destinations' => "{$query->toLatitude},{$query->toLongitude}",
                 'mode' => $query->type === DistanceType::Driving ? 'driving' : 'walking',
@@ -86,7 +86,7 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
         }
 
         try {
-            $response = $this->throttled('google', 'google', fn (): Response => $this->client()->get('/distancematrix/json', [
+            $response = $this->throttled('google', fn (): Response => $this->client()->get('/distancematrix/json', [
                 'origins' => $this->encode($origins),
                 'destinations' => $this->encode($destinations),
                 'mode' => $type === DistanceType::Driving ? 'driving' : 'walking',
@@ -160,7 +160,7 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
         }
 
         try {
-            $response = $this->throttled('google', 'google', fn (): Response => $this->client()->get('/geocode/json', $parameters));
+            $response = $this->throttled('google', fn (): Response => $this->client()->get('/geocode/json', $parameters));
         } catch (RequestException) {
             return null;
         }
