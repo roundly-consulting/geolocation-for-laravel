@@ -40,6 +40,13 @@
             }
         },
         {
+            "type": "path",
+            "url": "../testing-for-laravel*",
+            "options": {
+                "symlink": true
+            }
+        },
+        {
             "type": "vcs",
             "url": "https://github.com/roundly-consulting/enums-for-laravel",
             "no-api": true
@@ -52,6 +59,11 @@
         {
             "type": "vcs",
             "url": "https://github.com/roundly-consulting/package-toolkit-for-laravel",
+            "no-api": true
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/roundly-consulting/testing-for-laravel",
             "no-api": true
         }
     ],
@@ -75,7 +87,8 @@
         "pestphp/pest-plugin-arch": "^4.0",
         "pestphp/pest-plugin-laravel": "^4.0",
         "phpstan/extension-installer": "^1.4",
-        "phpstan/phpstan-deprecation-rules": "^2.0"
+        "phpstan/phpstan-deprecation-rules": "^2.0",
+        "roundly-consulting/testing-for-laravel": "@dev"
     },
     "autoload": {
         "psr-4": {
