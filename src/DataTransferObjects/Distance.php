@@ -42,4 +42,45 @@ final readonly class Distance implements Arrayable, JsonSerializable
     {
         return $this->toArray();
     }
+
+    /**
+     * Rebuild from {@see toArray()}, or `null` when the payload is not one.
+     *
+     * The counterpart a cache needs: a store may refuse to unserialize classes
+     * (Laravel's `cache.serializable_classes` defaults to `false`, guarding against
+     * gadget chains if `APP_KEY` leaks), so an object put into one comes back a
+     * `__PHP_Incomplete_Class`. Caching this array and reading it back through here
+     * is the only shape that survives that.
+     *
+     * Tolerant on purpose: a payload written by an older version of this package is
+     * a cache MISS, never an exception.
+     */
+    public static function tryFromArray(mixed $payload): ?self
+    {
+        if (! is_array($payload)) {
+            return null;
+        }
+
+        $type = is_string($payload['type'] ?? null) ? DistanceType::tryFrom($payload['type']) : null;
+
+        if ($type === null) {
+            return null;
+        }
+
+        if (! is_string($payload['humanReadableDistance'] ?? null) || ! is_string($payload['humanReadableDuration'] ?? null)) {
+            return null;
+        }
+
+        if (! is_int($payload['distanceInMeters'] ?? null) || ! is_int($payload['durationInSeconds'] ?? null)) {
+            return null;
+        }
+
+        return new self(
+            humanReadableDistance: $payload['humanReadableDistance'],
+            distanceInMeters: $payload['distanceInMeters'],
+            humanReadableDuration: $payload['humanReadableDuration'],
+            durationInSeconds: $payload['durationInSeconds'],
+            type: $type,
+        );
+    }
 }

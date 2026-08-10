@@ -168,3 +168,39 @@ it('does not use the cache for scoped using calls', function (): void {
 
     expect(Cache::has('geolocation:locate:'.(new GeolocationQuery('127.0.0.1'))->cacheKey()))->toBeFalse();
 });
+
+it('hits the cache through a store that refuses to unserialize classes', function (): void {
+    // The trap this closes: the manager used to `put()` the `Location` object and read
+    // it back with `instanceof`. Under `cache.serializable_classes => false` — Laravel's
+    // default, guarding against gadget chains if `APP_KEY` leaks — that object returns
+    // as `__PHP_Incomplete_Class`, so the `instanceof` was false FOREVER: a cache that
+    // never hit, quietly re-billing the provider on every lookup. The default `array`
+    // store does not serialize, which is why no test could see it.
+    config()->set('geolocation.cache.enabled', true);
+    config()->set('cache.serializable_classes', false);
+    config()->set('cache.stores.array.serialize', true);
+    app('cache')->forgetDriver('array');
+    Cache::flush();
+
+    $manager = app(GeolocationManager::class);
+    $query = new GeolocationQuery('127.0.0.1');
+
+    $first = $manager->locate($query);
+    $stored = Cache::get('geolocation:locate:'.$query->cacheKey());
+    $second = $manager->locate($query);
+
+    expect($stored)->toBeArray()
+        ->and($second)->toBeInstanceOf(Location::class)
+        ->and($second)->toEqual($first);
+});
+
+it('reads a payload it does not understand as a miss', function (): void {
+    config()->set('geolocation.cache.enabled', true);
+    Cache::flush();
+
+    $query = new GeolocationQuery('127.0.0.1');
+    // What an older version of this package left behind.
+    Cache::put('geolocation:locate:'.$query->cacheKey(), 'nonsense', 60);
+
+    expect(app(GeolocationManager::class)->locate($query))->toBeInstanceOf(Location::class);
+});

@@ -73,7 +73,13 @@ class GeolocationManager
     public function locate(GeolocationQuery $query): ?Location
     {
         if ($this->cacheEnabled()) {
-            $cached = $this->cache()->get($this->cacheKey('locate', $query->cacheKey()));
+            // Read back through `tryFromArray`, because what is STORED is the array —
+            // a cache store may refuse to unserialize classes (Laravel's
+            // `cache.serializable_classes` defaults to `false`), which turned an
+            // object put here into a `__PHP_Incomplete_Class` and made the
+            // `instanceof` below false forever: a cache that never hit, silently
+            // re-billing the provider for every lookup.
+            $cached = Location::tryFromArray($this->cache()->get($this->cacheKey('locate', $query->cacheKey())));
 
             if ($cached instanceof Location) {
                 $this->resetScope();
@@ -87,7 +93,7 @@ class GeolocationManager
         $resolved = $this->resolveLocation($query);
 
         if ($resolved instanceof Location && $this->cacheEnabled()) {
-            $this->cache()->put($this->cacheKey('locate', $query->cacheKey()), $resolved, $this->cacheTtl());
+            $this->cache()->put($this->cacheKey('locate', $query->cacheKey()), $resolved->toArray(), $this->cacheTtl());
         }
 
         $this->resetScope();
@@ -148,7 +154,7 @@ class GeolocationManager
     public function distance(DistanceQuery $query): ?Distance
     {
         if ($this->cacheEnabled()) {
-            $cached = $this->cache()->get($this->cacheKey('distance', $query->cacheKey()));
+            $cached = Distance::tryFromArray($this->cache()->get($this->cacheKey('distance', $query->cacheKey())));
 
             if ($cached instanceof Distance) {
                 $this->resetScope();
@@ -178,7 +184,7 @@ class GeolocationManager
 
         if ($resolved instanceof Distance) {
             if ($this->cacheEnabled()) {
-                $this->cache()->put($this->cacheKey('distance', $query->cacheKey()), $resolved, $this->cacheTtl());
+                $this->cache()->put($this->cacheKey('distance', $query->cacheKey()), $resolved->toArray(), $this->cacheTtl());
             }
 
             $this->dispatch(new DistanceResolved($query, $resolved, (string) $providerName));
