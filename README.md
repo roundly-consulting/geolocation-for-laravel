@@ -475,7 +475,7 @@ Published to `config/geolocation.php`. Every key:
 | Key | Type | Default | Purpose |
 |---|---|---|---|
 | `pipeline` | `list<string>` | all bundled provider names | Ordered provider names to consult. |
-| `providers` | `array<string, class-string>` | the bundled map | Name → provider class. Legacy flat lists still work. |
+| `providers` | `array<string, class-string>` | the bundled map | Name → provider class. Every entry needs a name (an unnamed one throws `UnknownProviderException`). |
 | `timeout` | `int` | `5` | HTTP timeout in seconds (`GEOLOCATION_TIMEOUT`). |
 | `cache.enabled` | `bool` | `false` | Cache successful lookups (`GEOLOCATION_CACHE`). |
 | `cache.store` | `?string` | `null` | Cache store, null = default (`GEOLOCATION_CACHE_STORE`). |
@@ -520,11 +520,10 @@ The `rate_limits` block exists on the four HTTP providers (`google`, `ipinfo`,
 
 ## Notes
 
-- Prefer the `RoundlyConsulting\Geolocation\Facades\Geolocation` facade (or resolving
-  `GeolocationManager` from the container). `RoundlyConsulting\Geolocation\Geolocation` is a
-  thin alias kept for convenience.
-- The `providers` config accepts either a **named map** (name → class) or a flat list of
-  class-strings.
+- Use the `RoundlyConsulting\Geolocation\Facades\Geolocation` facade, or resolve
+  `GeolocationManager` from the container.
+- The `providers` config is a **named map** (name → class); `pipeline` and `provider()` refer to
+  providers by that name.
 - `GeolocationQuery`/`DistanceQuery` provide named constructors
   (`forIp`/`forAddress`/`forCoordinates`, `between`).
 - `Location` exposes optional `region`, `postalCode`, and `timezone` fields (default `''`).

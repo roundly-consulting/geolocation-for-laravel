@@ -30,9 +30,8 @@ return [
     | Providers
     |--------------------------------------------------------------------------
     |
-    | A name => class-string map of the available providers. The package also
-    | accepts the legacy flat-list form (a list of class-strings) for backward
-    | compatibility — each class-string then doubles as its own name.
+    | A name => class-string map of the available providers. Every entry needs
+    | a name: `pipeline` and `Geolocation::provider()` refer to providers by it.
     |
     */
 

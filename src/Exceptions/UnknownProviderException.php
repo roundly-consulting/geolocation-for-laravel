@@ -10,4 +10,9 @@ final class UnknownProviderException extends GeolocationException
     {
         return new self("No geolocation provider is registered under the name [{$name}].");
     }
+
+    public static function unnamed(string $class): self
+    {
+        return new self("Every geolocation.providers entry needs a name: [{$class}] is listed without one.");
+    }
 }

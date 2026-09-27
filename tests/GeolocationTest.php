@@ -8,14 +8,15 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
-use RoundlyConsulting\Geolocation\Geolocation;
+use RoundlyConsulting\Geolocation\Exceptions\UnknownProviderException;
+use RoundlyConsulting\Geolocation\GeolocationManager;
 use RoundlyConsulting\Geolocation\Tests\FakeProviders\FakeAlternativeDistanceProvider;
 use RoundlyConsulting\Geolocation\Tests\FakeProviders\FakeAlternativeGeolocationProvider;
 use RoundlyConsulting\Geolocation\Tests\FakeProviders\FakeDistanceProvider;
 use RoundlyConsulting\Geolocation\Tests\FakeProviders\FakeGeolocationProvider;
 
 it('returns null for geolocation when no provider is defined', function () {
-    $geolocation = new Geolocation;
+    $geolocation = new GeolocationManager;
 
     config()->set('geolocation.providers', []);
 
@@ -23,7 +24,7 @@ it('returns null for geolocation when no provider is defined', function () {
 });
 
 it('returns null for calculating distance when no provider is defined', function () {
-    $geolocation = new Geolocation;
+    $geolocation = new GeolocationManager;
 
     config()->set('geolocation.providers', []);
 
@@ -31,11 +32,11 @@ it('returns null for calculating distance when no provider is defined', function
 });
 
 it('returns first geolocation provided by any provider', function () {
-    $geolocation = new Geolocation;
+    $geolocation = new GeolocationManager;
 
     config()->set('geolocation.providers', [
-        FakeGeolocationProvider::class,
-        FakeAlternativeGeolocationProvider::class,
+        'fake' => FakeGeolocationProvider::class,
+        'alt' => FakeAlternativeGeolocationProvider::class,
     ]);
 
     expect($geolocation->locate(new GeolocationQuery('127.0.0.1')))
@@ -49,8 +50,8 @@ it('returns first geolocation provided by any provider', function () {
         ->type->toBe(GeolocationType::Default);
 
     config()->set('geolocation.providers', [
-        FakeAlternativeGeolocationProvider::class,
-        FakeGeolocationProvider::class,
+        'alt' => FakeAlternativeGeolocationProvider::class,
+        'fake' => FakeGeolocationProvider::class,
     ]);
 
     expect($geolocation->locate(new GeolocationQuery('127.0.0.1')))
@@ -65,11 +66,11 @@ it('returns first geolocation provided by any provider', function () {
 });
 
 it('returns distance provided by any provider', function () {
-    $geolocation = new Geolocation;
+    $geolocation = new GeolocationManager;
 
     config()->set('geolocation.providers', [
-        FakeDistanceProvider::class,
-        FakeAlternativeDistanceProvider::class,
+        'distance' => FakeDistanceProvider::class,
+        'alt_distance' => FakeAlternativeDistanceProvider::class,
     ]);
 
     expect($geolocation->distance(new DistanceQuery(1, 2, 3, 4, DistanceType::Driving)))
@@ -81,8 +82,8 @@ it('returns distance provided by any provider', function () {
         ->type->toBe(DistanceType::Walking);
 
     config()->set('geolocation.providers', [
-        FakeAlternativeDistanceProvider::class,
-        FakeDistanceProvider::class,
+        'alt_distance' => FakeAlternativeDistanceProvider::class,
+        'distance' => FakeDistanceProvider::class,
     ]);
 
     expect($geolocation->distance(new DistanceQuery(1, 2, 3, 4, DistanceType::Driving)))
@@ -93,3 +94,9 @@ it('returns distance provided by any provider', function () {
         ->durationInSeconds->toBe(60)
         ->type->toBe(DistanceType::Driving);
 });
+
+it('refuses a provider listed without a name', function () {
+    config()->set('geolocation.providers', [FakeGeolocationProvider::class]);
+
+    (new GeolocationManager)->locate(new GeolocationQuery('127.0.0.1'));
+})->throws(UnknownProviderException::class, 'is listed without one');

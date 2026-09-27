@@ -372,7 +372,7 @@ class GeolocationManager
             ));
 
             // The configured pipeline applies only when it actually matches the available
-            // providers; a custom/legacy "providers" config falls back to its own order.
+            // providers; a custom "providers" config falls back to its own order.
             if ($names !== []) {
                 return $names;
             }
@@ -382,8 +382,8 @@ class GeolocationManager
     }
 
     /**
-     * The name => class-string provider map, accepting both the named-map form and the
-     * legacy flat list form (where each class-string is its own name).
+     * The name => class-string provider map. Every entry needs a name — the pipeline and
+     * `provider()` address providers by it.
      *
      * @return array<string, class-string>
      */
@@ -395,7 +395,11 @@ class GeolocationManager
         $map = [];
 
         foreach ($providers as $name => $class) {
-            $map[is_int($name) ? $class : (string) $name] = $class;
+            if (is_int($name)) {
+                throw UnknownProviderException::unnamed($class);
+            }
+
+            $map[$name] = $class;
         }
 
         /** @var array<string, class-string> $map */
