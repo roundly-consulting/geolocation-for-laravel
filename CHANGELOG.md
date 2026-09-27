@@ -1,48 +1,33 @@
 # Changelog
 
-All notable changes to `geolocation-for-laravel` will be documented in this file.
+All notable changes to `geolocation-for-laravel` are documented in this file. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+Initial public release.
+
 ### Added
 
-- MaxMind local `.mmdb` provider with a fully **native** binary reader (no third-party
-  MaxMind SDK) supporting 24/28/32-bit records, pointers, and IPv4-in-IPv6 lookups.
-- MaxMind GeoIP2 Precision **web-service** provider (HTTP Basic auth; city/country/insights).
-- Google **forward geocoding** (address → location) alongside the existing reverse geocoding.
-- Real `RoundlyConsulting\Geolocation\Facades\Geolocation` facade and a `Geolocation` alias.
-- `GeolocationManager` with a pluggable provider registry (`extend`, `using`), one-liner
-  helpers (`locateIp`, `locateAddress`, `locateCoordinates`, `locateRequest`), lookup
-  caching, and dispatched events.
-- `Coordinates` value object with range validation and a Haversine `distanceTo()`.
-- Named query constructors (`GeolocationQuery::forIp/forAddress/forCoordinates`,
-  `DistanceQuery::between`).
-- `LocationResolved`, `DistanceResolved`, `LocationResolutionFailed` events.
-- `geolocation:locate` artisan command.
-- Typed exceptions under `RoundlyConsulting\Geolocation\Exceptions`.
-- `Arrayable` + `JsonSerializable` on `Location` and `Distance`; `region`, `postalCode`, and
-  `timezone` fields on `Location`.
-- **IP2Location.io** provider (`ip2location`) over Laravel's HTTP client.
-- `geolocation:db:update` artisan command that downloads/refreshes the MaxMind GeoLite2/
-  GeoIP2 `.mmdb` file natively (gzip + PharData, no new dependency); the local-database
-  provider now throws an actionable exception pointing at it when the file is missing.
-- Single-provider selection via config or at runtime: `Geolocation::provider('ipinfo')`
-  and `Geolocation::using('maxmind_database')`.
-- `Geolocation::batch([...ips])` bulk lookups with graceful per-item failure.
-- `Geolocation::distanceMatrix($origins, $destinations)` multi-point distance via Google.
-- Geofencing helpers on `Coordinates`: `near()`, `within()` (point-in-polygon),
-  `bearingTo()`, `midpointTo()`, `boundingBox()`, plus a `BoundingBox` value object.
-- `HasLocation` Eloquent trait + `CoordinatesCast` to store/restore `Coordinates` on models,
-  with a `withinRadius()` query scope.
-- `Rule::coordinates()` validation rule and a `$request->location()` macro.
-- `Geolocation::fake()` recording test double with `assertLocated()`, `assertProviderUsed()`,
-  and `assertNothingLocated()` helpers.
-- Per-resolution provider overrides: `withToken()`, `withTimeout()`, `withConfig()`; the
-  manager is now `Macroable`.
-
-### Changed
-
-- `geolocation.providers` now accepts a named map (the legacy flat list still works); a new
-  `geolocation.pipeline` controls consultation order.
-- IPinfo provider hardened: request timeout, token-less anonymous mode, IP validation, and
-  richer field parsing.
+- Location lookup by IP address, coordinates or street address through an ordered, configurable
+  pipeline of providers, with a `Geolocation` facade (`locateIp()`, `locateRequest()`,
+  `locateAddress()`).
+- Bundled providers: IPinfo, IP2Location, Google (geocoding and distances), MaxMind web service,
+  and a static default fallback.
+- A native reader for MaxMind `.mmdb` databases, and the `geolocation:db:update` command to
+  download or refresh the database.
+- Travel distances between two points (`Geolocation::distance()`), batch IP lookups and a distance
+  matrix for several origins and destinations.
+- A `Coordinates` value object with geofencing helpers: `distanceTo()`, `near()`, `within()`
+  (point in polygon), `bearingTo()`, `midpointTo()` and `boundingBox()`.
+- A `HasLocation` trait and `CoordinatesCast` to store coordinates on a model, with a
+  `withinRadius()` query scope.
+- A coordinates validation rule (`Rule::coordinates()`) and a `$request->location()` macro.
+- Per-call provider selection (`using()`, `provider()`) and overrides (`withToken()`,
+  `withTimeout()`, `withConfig()`), plus custom providers via `Geolocation::extend()`.
+- Result caching and events (`LocationResolved`, `DistanceResolved`, `LocationResolutionFailed`).
+- Outbound provider calls paced by http-client-rate-limits-for-laravel, with `Retry-After`
+  backoff.
+- The `geolocation:locate` command for smoke-testing credentials, and `Geolocation::fake()` with
+  assertions for your tests.
