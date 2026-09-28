@@ -6,10 +6,12 @@ namespace RoundlyConsulting\Geolocation;
 
 use Closure;
 use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Traits\Macroable;
+use RoundlyConsulting\Geolocation\Actions\UpdateDatabaseAction;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Distance;
 use RoundlyConsulting\Geolocation\DataTransferObjects\DistanceMatrix;
@@ -20,12 +22,20 @@ use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\Events\DistanceResolved;
 use RoundlyConsulting\Geolocation\Events\LocationResolutionFailed;
 use RoundlyConsulting\Geolocation\Events\LocationResolved;
+use RoundlyConsulting\Geolocation\Exceptions\DatabaseUpdateException;
 use RoundlyConsulting\Geolocation\Exceptions\UnknownProviderException;
-use RoundlyConsulting\Geolocation\Facades\Geolocation as GeolocationFacade;
 use RoundlyConsulting\Geolocation\Providers\GoogleProvider;
 use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
-use RoundlyConsulting\Geolocation\Testing\FakeGeolocationManager;
 
+/**
+ * The package's public API: the root behind the Geolocation facade, injectable by its own
+ * class-string and bound as a singleton. Lookups and distances run through the configured
+ * provider pipeline (remote-API clients, so they stay provider objects rather than actions);
+ * the MaxMind database refresh is an action resolved through the container.
+ *
+ * Not final on purpose: GeolocationFake extends it, so code that constructor-injects this
+ * class still type-checks under `Geolocation::fake()`.
+ */
 class GeolocationManager
 {
     use Macroable;
@@ -51,24 +61,9 @@ class GeolocationManager
      */
     private array $overrides = [];
 
-    /**
-     * Swap the bound manager for a recording fake so host-app tests can assert on lookups
-     * without hitting any provider. Seed canned results via $results.
-     *
-     * @param  array<string, Location>  $results
-     */
-    public static function fake(array $results = []): FakeGeolocationManager
-    {
-        $fake = new FakeGeolocationManager($results);
-
-        app()->instance(GeolocationManager::class, $fake);
-
-        // The Geolocation facade caches its resolved instance; clear it so subsequent
-        // facade calls resolve the fake we just bound.
-        GeolocationFacade::clearResolvedInstance(GeolocationManager::class);
-
-        return $fake;
-    }
+    public function __construct(
+        protected readonly Container $container,
+    ) {}
 
     public function locate(GeolocationQuery $query): ?Location
     {
@@ -193,6 +188,50 @@ class GeolocationManager
         $this->resetScope();
 
         return $resolved;
+    }
+
+    /**
+     * The travel distance between two points — `distance()` without hand-building a
+     * DistanceQuery.
+     */
+    public function distanceBetween(
+        Coordinates $from,
+        Coordinates $to,
+        DistanceType $type = DistanceType::Driving,
+    ): ?Distance {
+        return $this->distance(DistanceQuery::between($from, $to, $type));
+    }
+
+    /**
+     * Download (or refresh) the MaxMind GeoLite2/GeoIP2 database and return the path it was
+     * written to. Edition and path default to `geolocation.services.maxmind_database.*`.
+     *
+     * @throws DatabaseUpdateException
+     */
+    public function updateDatabase(?string $edition = null, ?string $path = null): string
+    {
+        return $this->container->make(UpdateDatabaseAction::class)->execute($edition, $path);
+    }
+
+    /**
+     * Drop the cached result of one lookup or distance query, so the next call asks the
+     * providers again. Returns whether an entry was removed.
+     */
+    public function forget(GeolocationQuery|DistanceQuery $query): bool
+    {
+        return $query instanceof DistanceQuery
+            ? $this->cache()->forget($this->cacheKey('distance', $query->cacheKey()))
+            : $this->cache()->forget($this->cacheKey('locate', $query->cacheKey()));
+    }
+
+    /**
+     * Invalidate every cached lookup and distance at once. Works on any cache store: the
+     * cache keys carry a generation number and this moves it forward, so older entries are
+     * never read again and expire on their own TTL.
+     */
+    public function flushCache(): void
+    {
+        $this->cache()->forever($this->generationKey(), $this->cacheGeneration() + 1);
     }
 
     public function locateIp(string $ip): ?Location
@@ -435,8 +474,21 @@ class GeolocationManager
 
     private function cacheKey(string $kind, string $hash): string
     {
-        $prefix = (string) config('geolocation.cache.prefix', 'geolocation');
+        return "{$this->cachePrefix()}:v{$this->cacheGeneration()}:{$kind}:{$hash}";
+    }
 
-        return "{$prefix}:{$kind}:{$hash}";
+    private function cacheGeneration(): int
+    {
+        return (int) $this->cache()->get($this->generationKey(), 0);
+    }
+
+    private function generationKey(): string
+    {
+        return "{$this->cachePrefix()}:generation";
+    }
+
+    private function cachePrefix(): string
+    {
+        return (string) config('geolocation.cache.prefix', 'geolocation');
     }
 }

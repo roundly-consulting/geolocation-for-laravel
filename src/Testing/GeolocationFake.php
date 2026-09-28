@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Geolocation\Testing;
 
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Assert;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
@@ -16,10 +17,12 @@ use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\GeolocationManager;
 
 /**
- * A recording, network-free stand-in for the manager used in host-application tests. Seed
- * canned results per IP/address/coordinate and assert on what was looked up.
+ * A recording, network-free stand-in for the manager, installed by `Geolocation::fake()`.
+ * It extends the manager, so constructor-injected managers keep type-checking. Seed canned
+ * results per IP/address/coordinate and assert on what was looked up, measured, refreshed
+ * and forgotten — no provider, cache store or MaxMind download is ever touched.
  */
-final class FakeGeolocationManager extends GeolocationManager
+final class GeolocationFake extends GeolocationManager
 {
     /**
      * @var array<string, Location>
@@ -47,10 +50,29 @@ final class FakeGeolocationManager extends GeolocationManager
     private array $providersUsed = [];
 
     /**
+     * @var list<DistanceQuery>
+     */
+    private array $distances = [];
+
+    /**
+     * @var list<array{edition: string, path: string}>
+     */
+    private array $databaseUpdates = [];
+
+    /**
+     * @var list<GeolocationQuery|DistanceQuery>
+     */
+    private array $forgotten = [];
+
+    private int $flushes = 0;
+
+    /**
      * @param  array<string, Location>  $results
      */
-    public function __construct(array $results = [])
+    public function __construct(Container $container, array $results = [])
     {
+        parent::__construct($container);
+
         $this->results = $results;
     }
 
@@ -96,6 +118,8 @@ final class FakeGeolocationManager extends GeolocationManager
 
     public function distance(DistanceQuery $query): ?Distance
     {
+        $this->distances[] = $query;
+
         return $this->distance;
     }
 
@@ -109,6 +133,31 @@ final class FakeGeolocationManager extends GeolocationManager
         DistanceType $type = DistanceType::Driving,
     ): DistanceMatrix {
         return new DistanceMatrix($origins, $destinations, []);
+    }
+
+    /**
+     * Records the refresh and returns the path it would have written — nothing is downloaded.
+     */
+    public function updateDatabase(?string $edition = null, ?string $path = null): string
+    {
+        $edition = $edition ?? (string) config('geolocation.services.maxmind_database.edition', 'GeoLite2-City');
+        $path = $path ?? (string) config('geolocation.services.maxmind_database.path', '');
+
+        $this->databaseUpdates[] = ['edition' => $edition, 'path' => $path];
+
+        return $path;
+    }
+
+    public function forget(GeolocationQuery|DistanceQuery $query): bool
+    {
+        $this->forgotten[] = $query;
+
+        return true;
+    }
+
+    public function flushCache(): void
+    {
+        $this->flushes++;
     }
 
     public function locateIp(string $ip): ?Location
@@ -194,6 +243,93 @@ final class FakeGeolocationManager extends GeolocationManager
             $this->providersUsed,
             "Failed asserting that provider [{$name}] was used.",
         );
+    }
+
+    /**
+     * Assert a distance was requested — through `distance()` or `distanceBetween()`. Each
+     * argument narrows the match; omit them all to accept any request.
+     */
+    public function assertDistanceRequested(
+        ?Coordinates $from = null,
+        ?Coordinates $to = null,
+        ?DistanceType $type = null,
+    ): void {
+        $matching = array_filter(
+            $this->distances,
+            static fn (DistanceQuery $query): bool => ($from === null || $query->from()->toArray() === $from->toArray())
+                && ($to === null || $query->to()->toArray() === $to->toArray())
+                && ($type === null || $query->type === $type),
+        );
+
+        Assert::assertNotEmpty($matching, $from === null && $to === null && $type === null
+            ? 'Failed asserting that a distance was requested.'
+            : 'Failed asserting that a matching distance was requested.');
+    }
+
+    public function assertNoDistanceRequested(): void
+    {
+        Assert::assertSame(
+            [],
+            $this->distances,
+            sprintf('Failed asserting that no distance was requested (%d were).', count($this->distances)),
+        );
+    }
+
+    /**
+     * Assert the MaxMind database was refreshed, optionally for a given edition.
+     */
+    public function assertDatabaseUpdated(?string $edition = null): void
+    {
+        $matching = array_filter(
+            $this->databaseUpdates,
+            static fn (array $update): bool => $edition === null || $update['edition'] === $edition,
+        );
+
+        Assert::assertNotEmpty($matching, $edition === null
+            ? 'Failed asserting that the MaxMind database was updated.'
+            : "Failed asserting that the MaxMind database [{$edition}] was updated.");
+    }
+
+    public function assertDatabaseNotUpdated(): void
+    {
+        Assert::assertSame(
+            [],
+            $this->databaseUpdates,
+            'Failed asserting that the MaxMind database was not updated.',
+        );
+    }
+
+    /**
+     * Assert the cached result of this lookup or distance query was forgotten.
+     */
+    public function assertForgotten(GeolocationQuery|DistanceQuery $query): void
+    {
+        $matching = array_filter(
+            $this->forgotten,
+            static fn (GeolocationQuery|DistanceQuery $forgotten): bool => $forgotten::class === $query::class
+                && $forgotten->cacheKey() === $query->cacheKey(),
+        );
+
+        Assert::assertNotEmpty($matching, 'Failed asserting that the query was forgotten.');
+    }
+
+    public function assertNothingForgotten(): void
+    {
+        Assert::assertSame(
+            [],
+            $this->forgotten,
+            'Failed asserting that nothing was forgotten.',
+        );
+    }
+
+    public function assertCacheFlushed(): void
+    {
+        Assert::assertGreaterThan(0, $this->flushes, 'Failed asserting that the geolocation cache was flushed.');
+    }
+
+    public function assertCacheNotFlushed(): void
+    {
+        Assert::assertSame(0, $this->flushes, 'Failed asserting that the geolocation cache was not flushed.');
     }
 
     private function keyFor(GeolocationQuery $query): string

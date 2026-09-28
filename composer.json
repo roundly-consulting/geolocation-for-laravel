@@ -117,7 +117,10 @@
         "laravel": {
             "providers": [
                 "RoundlyConsulting\\Geolocation\\GeolocationServiceProvider"
-            ]
+            ],
+            "aliases": {
+                "Geolocation": "RoundlyConsulting\\Geolocation\\Facades\\Geolocation"
+            }
         }
     },
     "minimum-stability": "dev",

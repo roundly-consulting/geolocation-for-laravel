@@ -4,27 +4,6 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Http;
 
-/**
- * Build a gzipped tar archive containing a single .mmdb member, mirroring the layout
- * MaxMind serves (an edition-named directory holding the database file).
- */
-function fakeMaxMindArchive(string $edition, string $contents): string
-{
-    $work = sys_get_temp_dir().'/'.uniqid('mmtest_', true);
-    mkdir($work."/{$edition}_20240101", 0755, true);
-    file_put_contents($work."/{$edition}_20240101/{$edition}.mmdb", $contents);
-
-    $tarPath = $work.'/archive.tar';
-    $phar = new PharData($tarPath);
-    $phar->buildFromDirectory($work, '/.*\.mmdb$/');
-
-    $gz = gzencode((string) file_get_contents($tarPath));
-
-    unlink($tarPath);
-
-    return (string) $gz;
-}
-
 afterEach(function () {
     $path = storage_path('app/geolocation/GeoLite2-City.mmdb');
     if (is_file($path)) {

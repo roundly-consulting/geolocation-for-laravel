@@ -6,7 +6,6 @@ namespace RoundlyConsulting\Geolocation;
 
 use RoundlyConsulting\Geolocation\Commands\LocateCommand;
 use RoundlyConsulting\Geolocation\Commands\UpdateDatabaseCommand;
-use RoundlyConsulting\Geolocation\Facades\Geolocation as GeolocationFacade;
 use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
 use RoundlyConsulting\Geolocation\Support\RequestMacro;
 use RoundlyConsulting\Geolocation\Support\ValidationRules;
@@ -24,7 +23,6 @@ final class GeolocationServiceProvider extends PackageServiceProvider
                 LocateCommand::class,
                 UpdateDatabaseCommand::class,
             ])
-            ->hasFacadeAlias(GeolocationFacade::class)
             ->contributesToAbout(static function (): array {
                 $pipeline = config('geolocation.pipeline', []);
 

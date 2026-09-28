@@ -27,7 +27,7 @@ it('outputs json when requested', function (): void {
 
 it('treats the target as an address with the address flag', function (): void {
     app()->bind(GeolocationManager::class, function (): GeolocationManager {
-        return new class extends GeolocationManager
+        return new class(app()) extends GeolocationManager
         {
             public function locate(GeolocationQuery $query): ?Location
             {
@@ -44,7 +44,7 @@ it('treats the target as an address with the address flag', function (): void {
 
 it('exits non-zero when nothing resolves', function (): void {
     app()->bind(GeolocationManager::class, function (): GeolocationManager {
-        return new class extends GeolocationManager
+        return new class(app()) extends GeolocationManager
         {
             public function locate(GeolocationQuery $query): ?Location
             {

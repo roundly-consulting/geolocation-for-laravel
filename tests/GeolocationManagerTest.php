@@ -115,7 +115,7 @@ it('caches a successful lookup', function (): void {
     $second = $manager->locate(new GeolocationQuery('127.0.0.1'));
 
     expect($first)->toEqual($second)
-        ->and(Cache::has('geolocation:locate:'.(new GeolocationQuery('127.0.0.1'))->cacheKey()))->toBeTrue();
+        ->and(Cache::has('geolocation:v0:locate:'.(new GeolocationQuery('127.0.0.1'))->cacheKey()))->toBeTrue();
 });
 
 it('caches a successful distance lookup', function (): void {
@@ -166,7 +166,7 @@ it('does not use the cache for scoped using calls', function (): void {
 
     app(GeolocationManager::class)->using('alt')->locate(new GeolocationQuery('127.0.0.1'));
 
-    expect(Cache::has('geolocation:locate:'.(new GeolocationQuery('127.0.0.1'))->cacheKey()))->toBeFalse();
+    expect(Cache::has('geolocation:v0:locate:'.(new GeolocationQuery('127.0.0.1'))->cacheKey()))->toBeFalse();
 });
 
 it('hits the cache through a store that refuses to unserialize classes', function (): void {
@@ -186,7 +186,7 @@ it('hits the cache through a store that refuses to unserialize classes', functio
     $query = new GeolocationQuery('127.0.0.1');
 
     $first = $manager->locate($query);
-    $stored = Cache::get('geolocation:locate:'.$query->cacheKey());
+    $stored = Cache::get('geolocation:v0:locate:'.$query->cacheKey());
     $second = $manager->locate($query);
 
     expect($stored)->toBeArray()
@@ -200,7 +200,7 @@ it('reads a payload it does not understand as a miss', function (): void {
 
     $query = new GeolocationQuery('127.0.0.1');
     // What an older version of this package left behind.
-    Cache::put('geolocation:locate:'.$query->cacheKey(), 'nonsense', 60);
+    Cache::put('geolocation:v0:locate:'.$query->cacheKey(), 'nonsense', 60);
 
     expect(app(GeolocationManager::class)->locate($query))->toBeInstanceOf(Location::class);
 });

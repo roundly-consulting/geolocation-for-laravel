@@ -2,10 +2,8 @@
 
 declare(strict_types=1);
 
-use Illuminate\Foundation\AliasLoader;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\ServiceProvider;
-use RoundlyConsulting\Geolocation\Facades\Geolocation as GeolocationFacade;
 use RoundlyConsulting\Geolocation\GeolocationManager;
 use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
 
@@ -28,11 +26,6 @@ it('merges the package config', function (): void {
 
 it('publishes the config under the geolocation-config tag', function (): void {
     expect(ServiceProvider::pathsToPublish(null, 'geolocation-config'))->not->toBeEmpty();
-});
-
-it('registers the Geolocation facade alias', function (): void {
-    expect(AliasLoader::getInstance()->getAliases())
-        ->toHaveKey('Geolocation', GeolocationFacade::class);
 });
 
 it('contributes a section to the about command', function (): void {

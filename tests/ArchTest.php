@@ -60,3 +60,10 @@ ArchPresets::runtimeRequireIsWhitelisted(__DIR__.'/../composer.json');
  * `print_r`, which this package never banned.
  */
 ArchPresets::noDebuggingLeftovers([], __DIR__.'/../src');
+
+/**
+ * Model traits delegate to the manager, never to an action, so `Geolocation::fake()` sees
+ * every call. `Concerns\HasLocation` (the cast + bounding-box scope a host mixes into its
+ * own model) and the provider concerns hold no action reference today; this keeps it so.
+ */
+ArchPresets::modelsGoThroughTheFacade('RoundlyConsulting\Geolocation');

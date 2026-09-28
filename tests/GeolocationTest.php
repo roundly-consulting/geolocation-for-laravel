@@ -16,7 +16,7 @@ use RoundlyConsulting\Geolocation\Tests\FakeProviders\FakeDistanceProvider;
 use RoundlyConsulting\Geolocation\Tests\FakeProviders\FakeGeolocationProvider;
 
 it('returns null for geolocation when no provider is defined', function () {
-    $geolocation = new GeolocationManager;
+    $geolocation = new GeolocationManager(app());
 
     config()->set('geolocation.providers', []);
 
@@ -24,7 +24,7 @@ it('returns null for geolocation when no provider is defined', function () {
 });
 
 it('returns null for calculating distance when no provider is defined', function () {
-    $geolocation = new GeolocationManager;
+    $geolocation = new GeolocationManager(app());
 
     config()->set('geolocation.providers', []);
 
@@ -32,7 +32,7 @@ it('returns null for calculating distance when no provider is defined', function
 });
 
 it('returns first geolocation provided by any provider', function () {
-    $geolocation = new GeolocationManager;
+    $geolocation = new GeolocationManager(app());
 
     config()->set('geolocation.providers', [
         'fake' => FakeGeolocationProvider::class,
@@ -66,7 +66,7 @@ it('returns first geolocation provided by any provider', function () {
 });
 
 it('returns distance provided by any provider', function () {
-    $geolocation = new GeolocationManager;
+    $geolocation = new GeolocationManager(app());
 
     config()->set('geolocation.providers', [
         'distance' => FakeDistanceProvider::class,
@@ -98,5 +98,5 @@ it('returns distance provided by any provider', function () {
 it('refuses a provider listed without a name', function () {
     config()->set('geolocation.providers', [FakeGeolocationProvider::class]);
 
-    (new GeolocationManager)->locate(new GeolocationQuery('127.0.0.1'));
+    (new GeolocationManager(app()))->locate(new GeolocationQuery('127.0.0.1'));
 })->throws(UnknownProviderException::class, 'is listed without one');
