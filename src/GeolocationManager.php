@@ -50,14 +50,14 @@ class GeolocationManager
     private array $extensions = [];
 
     /**
-     * When non-null, restricts the next resolution to these provider names only.
+     * When non-null, restricts this (scoped copy's) resolutions to these provider names only.
      *
      * @var list<string>|null
      */
     private ?array $only = null;
 
     /**
-     * Call-time provider configuration overrides queued for the next resolution.
+     * Call-time provider configuration overrides applied to this (scoped copy's) resolutions.
      *
      * @var array<string, mixed>
      */
@@ -79,28 +79,23 @@ class GeolocationManager
             $cached = Location::tryFromArray($this->cache()->get($this->cacheKey('locate', $query->cacheKey())));
 
             if ($cached instanceof Location) {
-                $this->resetScope();
-
                 return $cached;
             }
         }
 
-        $this->applyOverrides();
-
-        $resolved = $this->resolveLocation($query);
+        $resolved = $this->scoped(fn (): ?Location => $this->resolveLocation($query));
 
         if ($resolved instanceof Location && $this->cacheEnabled()) {
             $this->cache()->put($this->cacheKey('locate', $query->cacheKey()), $resolved->toArray(), $this->cacheTtl());
         }
-
-        $this->resetScope();
 
         return $resolved;
     }
 
     /**
      * Resolve several IP addresses at once, returning a name-preserving map of results
-     * (null where a lookup failed). Failures never abort the batch.
+     * (null where a lookup failed). Failures never abort the batch. A scope or override
+     * (`provider()`, `using()`, `with*()`) applies to every IP.
      *
      * @param  list<string>  $ips
      * @return array<string, Location|null>
@@ -132,20 +127,17 @@ class GeolocationManager
         array $destinations,
         DistanceType $type = DistanceType::Driving,
     ): DistanceMatrix {
-        $this->applyOverrides();
+        return $this->scoped(function () use ($origins, $destinations, $type): DistanceMatrix {
+            foreach ($this->providerNames() as $name) {
+                $provider = $this->resolveProvider($name);
 
-        foreach ($this->resolveProviders() as $provider) {
-            if ($provider instanceof GoogleProvider) {
-                $matrix = $provider->distanceMatrix($origins, $destinations, $type);
-                $this->resetScope();
-
-                return $matrix;
+                if ($provider instanceof GoogleProvider) {
+                    return $provider->distanceMatrix($origins, $destinations, $type);
+                }
             }
-        }
 
-        $this->resetScope();
-
-        return new DistanceMatrix($origins, $destinations, []);
+            return new DistanceMatrix($origins, $destinations, []);
+        });
     }
 
     public function distance(DistanceQuery $query): ?Distance
@@ -154,45 +146,15 @@ class GeolocationManager
             $cached = Distance::tryFromArray($this->cache()->get($this->cacheKey('distance', $query->cacheKey())));
 
             if ($cached instanceof Distance) {
-                $this->resetScope();
-
                 return $cached;
             }
         }
 
-        $this->applyOverrides();
+        $resolved = $this->scoped(fn (): ?Distance => $this->resolveDistance($query));
 
-        $resolved = null;
-        $providerName = null;
-
-        foreach ($this->resolveProviders() as $name => $provider) {
-            if (! $provider instanceof DistanceProvider) {
-                continue;
-            }
-
-            try {
-                $result = $provider->distance($query);
-            } catch (ProviderUnavailableException) {
-                // An unreachable API is a miss, not an abort: ask the next provider.
-                continue;
-            }
-
-            if ($result instanceof Distance) {
-                $resolved = $result;
-                $providerName = $name;
-                break;
-            }
+        if ($resolved instanceof Distance && $this->cacheEnabled()) {
+            $this->cache()->put($this->cacheKey('distance', $query->cacheKey()), $resolved->toArray(), $this->cacheTtl());
         }
-
-        if ($resolved instanceof Distance) {
-            if ($this->cacheEnabled()) {
-                $this->cache()->put($this->cacheKey('distance', $query->cacheKey()), $resolved->toArray(), $this->cacheTtl());
-            }
-
-            $this->dispatch(new DistanceResolved($query, $resolved, (string) $providerName));
-        }
-
-        $this->resetScope();
 
         return $resolved;
     }
@@ -278,75 +240,67 @@ class GeolocationManager
     }
 
     /**
-     * Scope the next resolution to the given provider names only.
+     * A copy of this manager scoped to the given provider names only. The shared manager is
+     * never changed, so the scope cannot outlive the call chain it was set on.
      */
     public function using(string ...$providers): self
     {
-        $this->only = array_values($providers);
+        $scoped = clone $this;
+        $scoped->only = array_values($providers);
 
-        return $this;
+        return $scoped;
     }
 
     /**
-     * Scope the next resolution to a single provider (alias of using() for one name).
+     * A copy of this manager scoped to a single provider (using() for one name).
      */
     public function provider(string $name): self
     {
-        $this->only = [$name];
-
-        return $this;
+        return $this->using($name);
     }
 
     /**
-     * Override the API token/key the provider(s) use for the next resolution only.
+     * A copy of this manager whose calls use this API token/key.
      */
     public function withToken(#[\SensitiveParameter] string $token): self
     {
-        $this->overrides['token'] = $token;
-
-        return $this;
+        return $this->withConfig(['token' => $token]);
     }
 
     /**
-     * Override the HTTP timeout (seconds) the provider(s) use for the next resolution only.
+     * A copy of this manager whose calls use this HTTP timeout (seconds).
      */
     public function withTimeout(int $seconds): self
     {
-        $this->overrides['timeout'] = $seconds;
-
-        return $this;
+        return $this->withConfig(['timeout' => $seconds]);
     }
 
     /**
-     * Merge arbitrary call-time overrides applied to the provider(s) for the next
-     * resolution only, without mutating global config.
+     * A copy of this manager whose calls apply these provider config overrides, without
+     * mutating global config.
      *
      * @param  array<string, mixed>  $overrides
      */
     public function withConfig(array $overrides): self
     {
-        $this->overrides = array_merge($this->overrides, $overrides);
+        $scoped = clone $this;
+        $scoped->overrides = array_merge($this->overrides, $overrides);
 
-        return $this;
+        return $scoped;
     }
 
-    private function applyOverrides(): void
+    /**
+     * Run a resolution with this instance's overrides active for its providers, restored
+     * afterwards even when a provider throws.
+     *
+     * @template TResult
+     *
+     * @param  Closure(): TResult  $callback
+     * @return TResult
+     */
+    private function scoped(Closure $callback): mixed
     {
-        if ($this->overrides === [] || ! app()->bound(ProviderOverrides::class)) {
-            return;
-        }
-
-        app(ProviderOverrides::class)->merge($this->overrides);
-    }
-
-    private function resetScope(): void
-    {
-        $this->only = null;
-        $this->overrides = [];
-
-        if (app()->bound(ProviderOverrides::class)) {
-            app(ProviderOverrides::class)->reset();
-        }
+        return $this->container->make(ProviderOverrides::class)->during($this->overrides, $callback);
     }
 
     /**
@@ -391,14 +345,30 @@ class GeolocationManager
         return null;
     }
 
-    /**
-     * @return iterable<string, object>
-     */
-    private function resolveProviders(): iterable
+    private function resolveDistance(DistanceQuery $query): ?Distance
     {
         foreach ($this->providerNames() as $name) {
-            yield $name => $this->resolveProvider($name);
+            $provider = $this->resolveProvider($name);
+
+            if (! $provider instanceof DistanceProvider) {
+                continue;
+            }
+
+            try {
+                $distance = $provider->distance($query);
+            } catch (ProviderUnavailableException) {
+                // An unreachable API is a miss, not an abort: ask the next provider.
+                continue;
+            }
+
+            if ($distance instanceof Distance) {
+                $this->dispatch(new DistanceResolved($query, $distance, $name));
+
+                return $distance;
+            }
         }
+
+        return null;
     }
 
     private function resolveProvider(string $name): object
