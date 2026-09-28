@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Promise\Create;
+use GuzzleHttp\Promise\PromiseInterface;
+use Illuminate\Http\Client\Request;
 use RoundlyConsulting\Geolocation\Tests\TestCase;
 
 uses(TestCase::class)->in(__DIR__);
@@ -26,4 +30,19 @@ function fakeMaxMindArchive(string $edition, string $contents, ?string $member =
     unlink($tarPath);
 
     return (string) $gz;
+}
+
+/**
+ * An `Http::fake()` stub that fails the way a real timeout / refused connection does:
+ * a rejected transfer whose message ends in the full request URL — query-string
+ * credentials included, which is exactly what must never leak.
+ */
+function failedConnection(): Closure
+{
+    return static fn (Request $request): PromiseInterface => Create::rejectionFor(
+        new ConnectException(
+            "cURL error 7: Failed to connect (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for {$request->toPsrRequest()->getUri()}",
+            $request->toPsrRequest(),
+        ),
+    );
 }

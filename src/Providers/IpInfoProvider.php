@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Geolocation\Providers;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Geolocation\Concerns\HasProviderOverrides;
@@ -13,6 +13,7 @@ use RoundlyConsulting\Geolocation\Concerns\InteractsWithRateLimits;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 
 final class IpInfoProvider implements GeolocationProvider
@@ -28,8 +29,8 @@ final class IpInfoProvider implements GeolocationProvider
 
         try {
             $response = $this->throttled('ipinfo', fn (): Response => $this->client()->get("/{$query->ipAddress}/json"));
-        } catch (RequestException) {
-            return null;
+        } catch (ConnectionException $e) {
+            throw ProviderUnavailableException::for('ipinfo', $e, [$this->token()]);
         }
 
         if (! $response->successful()) {
@@ -82,16 +83,22 @@ final class IpInfoProvider implements GeolocationProvider
             )
             ->acceptJson();
 
-        $override = $this->override('token');
-        /** @var string|null $token */
-        $token = is_string($override) && $override !== '' ? $override : config('geolocation.services.ipinfo.token');
+        $token = $this->token();
 
         // IPinfo's anonymous tier works without a token; only attach one when present so
         // we never send an empty bearer header.
-        if ($token !== null && $token !== '') {
+        if ($token !== null) {
             $client = $client->withToken($token);
         }
 
         return $client;
+    }
+
+    private function token(): ?string
+    {
+        $override = $this->override('token');
+        $token = is_string($override) && $override !== '' ? $override : config('geolocation.services.ipinfo.token');
+
+        return is_string($token) && $token !== '' ? $token : null;
     }
 }

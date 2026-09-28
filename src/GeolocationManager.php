@@ -23,9 +23,11 @@ use RoundlyConsulting\Geolocation\Events\DistanceResolved;
 use RoundlyConsulting\Geolocation\Events\LocationResolutionFailed;
 use RoundlyConsulting\Geolocation\Events\LocationResolved;
 use RoundlyConsulting\Geolocation\Exceptions\DatabaseUpdateException;
+use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\Exceptions\UnknownProviderException;
 use RoundlyConsulting\Geolocation\Providers\GoogleProvider;
 use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
+use Throwable;
 
 /**
  * The package's public API: the root behind the Geolocation facade, injectable by its own
@@ -110,7 +112,7 @@ class GeolocationManager
         foreach ($ips as $ip) {
             try {
                 $results[$ip] = $this->locateIp($ip);
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 $results[$ip] = null;
             }
         }
@@ -168,7 +170,12 @@ class GeolocationManager
                 continue;
             }
 
-            $result = $provider->distance($query);
+            try {
+                $result = $provider->distance($query);
+            } catch (ProviderUnavailableException) {
+                // An unreachable API is a miss, not an abort: ask the next provider.
+                continue;
+            }
 
             if ($result instanceof Distance) {
                 $resolved = $result;
@@ -342,14 +349,35 @@ class GeolocationManager
         }
     }
 
+    /**
+     * Walk the pipeline until a provider answers. A provider whose API is unreachable
+     * (ProviderUnavailableException) is skipped; any other exception aborts the lookup.
+     * Either way a lookup that ends without a location dispatches LocationResolutionFailed,
+     * naming the provider that failed last and its (redacted) error.
+     */
     private function resolveLocation(GeolocationQuery $query): ?Location
     {
-        foreach ($this->resolveProviders() as $name => $provider) {
-            if (! $provider instanceof GeolocationProvider) {
-                continue;
-            }
+        $failedProvider = null;
+        $error = null;
 
-            $location = $provider->locate($query);
+        foreach ($this->providerNames() as $name) {
+            try {
+                $provider = $this->resolveProvider($name);
+
+                if (! $provider instanceof GeolocationProvider) {
+                    continue;
+                }
+
+                $location = $provider->locate($query);
+            } catch (ProviderUnavailableException $e) {
+                [$failedProvider, $error] = [$name, $e];
+
+                continue;
+            } catch (Throwable $e) {
+                $this->dispatch(new LocationResolutionFailed($query, $name, $e));
+
+                throw $e;
+            }
 
             if ($location instanceof Location) {
                 $this->dispatch(new LocationResolved($query, $location, $name));
@@ -358,7 +386,7 @@ class GeolocationManager
             }
         }
 
-        $this->dispatch(new LocationResolutionFailed($query));
+        $this->dispatch(new LocationResolutionFailed($query, $failedProvider, $error));
 
         return null;
     }

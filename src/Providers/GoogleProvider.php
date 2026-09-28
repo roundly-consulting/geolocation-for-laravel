@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Geolocation\Providers;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Geolocation\Concerns\HasProviderOverrides;
@@ -19,6 +19,7 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\DistanceProvider;
 use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 
 /**
@@ -38,8 +39,8 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
                 'destinations' => "{$query->toLatitude},{$query->toLongitude}",
                 'mode' => $query->type === DistanceType::Driving ? 'driving' : 'walking',
             ]));
-        } catch (RequestException) {
-            return null;
+        } catch (ConnectionException $e) {
+            throw $this->unavailable($e);
         }
 
         if ($response->failed()) {
@@ -91,7 +92,8 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
                 'destinations' => $this->encode($destinations),
                 'mode' => $type === DistanceType::Driving ? 'driving' : 'walking',
             ]));
-        } catch (RequestException) {
+        } catch (ConnectionException) {
+            // An unreachable API degrades every cell to null rather than aborting.
             $response = null;
         }
 
@@ -161,8 +163,8 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
 
         try {
             $response = $this->throttled('google', fn (): Response => $this->client()->get('/geocode/json', $parameters));
-        } catch (RequestException) {
-            return null;
+        } catch (ConnectionException $e) {
+            throw $this->unavailable($e);
         }
 
         if ($response->failed()) {
@@ -224,15 +226,29 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
         );
     }
 
-    private function client(): PendingRequest
+    private function key(): ?string
     {
         $override = $this->override('token');
         $key = is_string($override) && $override !== '' ? $override : config('geolocation.services.google.key');
 
+        return is_string($key) && $key !== '' ? $key : null;
+    }
+
+    /**
+     * The key rides in the query string, so a transport error's message (which ends in the
+     * request URL) carries it — redact before it leaves the provider.
+     */
+    private function unavailable(ConnectionException $e): ProviderUnavailableException
+    {
+        return ProviderUnavailableException::for('google', $e, [$this->key()]);
+    }
+
+    private function client(): PendingRequest
+    {
         $timeout = $this->override('timeout');
 
         return Http::baseUrl(rtrim((string) config('geolocation.services.google.url'), '/'))
-            ->withQueryParameters(['key' => $key])
+            ->withQueryParameters(['key' => $this->key()])
             ->timeout($timeout !== null ? (int) $timeout : (int) config('geolocation.timeout', 5))
             ->retry(
                 (int) config('geolocation.services.google.retry'),

@@ -204,3 +204,43 @@ it('reads a payload it does not understand as a miss', function (): void {
 
     expect(app(GeolocationManager::class)->locate($query))->toBeInstanceOf(Location::class);
 });
+
+it('names the provider and error on the failure event when a provider throws', function (): void {
+    $manager = app(GeolocationManager::class);
+    $boom = new RuntimeException('database exploded');
+
+    $manager->extend('broken', fn () => new class($boom) implements GeolocationProvider
+    {
+        public function __construct(private readonly Throwable $boom) {}
+
+        public function locate(GeolocationQuery $query): ?Location
+        {
+            throw $this->boom;
+        }
+    });
+    config()->set('geolocation.pipeline', ['broken']);
+    Event::fake([LocationResolutionFailed::class]);
+
+    expect(fn () => $manager->locateIp('1.1.1.1'))->toThrow(RuntimeException::class, 'database exploded');
+
+    Event::assertDispatched(LocationResolutionFailed::class, fn (LocationResolutionFailed $event): bool => $event->provider === 'broken'
+        && $event->error === $boom);
+});
+
+it('leaves provider and error null on the failure event when every provider simply misses', function (): void {
+    $manager = app(GeolocationManager::class);
+    $manager->extend('empty', fn () => new class implements GeolocationProvider
+    {
+        public function locate(GeolocationQuery $query): ?Location
+        {
+            return null;
+        }
+    });
+    config()->set('geolocation.pipeline', ['empty']);
+    Event::fake([LocationResolutionFailed::class]);
+
+    expect($manager->locateIp('1.1.1.1'))->toBeNull();
+
+    Event::assertDispatched(LocationResolutionFailed::class, fn (LocationResolutionFailed $event): bool => $event->provider === null
+        && $event->error === null);
+});

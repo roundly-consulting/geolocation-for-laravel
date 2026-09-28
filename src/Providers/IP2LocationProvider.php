@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Geolocation\Providers;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Geolocation\Concerns\HasProviderOverrides;
@@ -13,6 +13,7 @@ use RoundlyConsulting\Geolocation\Concerns\InteractsWithRateLimits;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 
 /**
@@ -32,11 +33,12 @@ final class IP2LocationProvider implements GeolocationProvider
 
         try {
             $response = $this->throttled('ip2location', fn (): Response => $this->client()->get('/', [
-                'key' => $this->override('token') ?? config('geolocation.services.ip2location.key'),
+                'key' => $this->key(),
                 'ip' => $query->ipAddress,
             ]));
-        } catch (RequestException) {
-            return null;
+        } catch (ConnectionException $e) {
+            // The key rides in the query string, which the transport error message quotes.
+            throw ProviderUnavailableException::for('ip2location', $e, [$this->key()]);
         }
 
         if (! $response->successful()) {
@@ -81,6 +83,14 @@ final class IP2LocationProvider implements GeolocationProvider
         $head = trim(implode(', ', array_filter([$city, $region])));
 
         return trim(implode(' ', array_filter([$head, $country])));
+    }
+
+    private function key(): ?string
+    {
+        $override = $this->override('token');
+        $key = is_string($override) && $override !== '' ? $override : config('geolocation.services.ip2location.key');
+
+        return is_string($key) && $key !== '' ? $key : null;
     }
 
     private function client(): PendingRequest

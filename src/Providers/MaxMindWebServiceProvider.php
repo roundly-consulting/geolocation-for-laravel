@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Geolocation\Providers;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Geolocation\Concerns\InteractsWithRateLimits;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 
 /**
@@ -36,8 +37,10 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
 
         try {
             $response = $this->throttled('maxmind_web', fn (): Response => $this->client()->get("/{$service}/{$query->ipAddress}"));
-        } catch (RequestException) {
-            return null;
+        } catch (ConnectionException $e) {
+            throw ProviderUnavailableException::for('maxmind_web', $e, [
+                config('geolocation.services.maxmind_web.license_key'),
+            ]);
         }
 
         if (! $response->successful()) {
