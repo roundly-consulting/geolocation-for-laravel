@@ -86,6 +86,39 @@ it('records the provider pinned via using', function () {
     $fake->assertProviderUsed('maxmind_database');
 });
 
+it('records every provider named in using', function () {
+    $fake = Geolocation::fake();
+
+    Geolocation::using('maxmind_database', 'ipinfo')->locateIp('1.1.1.1');
+
+    $fake->assertProviderUsed('maxmind_database');
+    $fake->assertProviderUsed('ipinfo');
+});
+
+it('records a provider pinned for a distance, a matrix or a batch', function () {
+    $fake = Geolocation::fake();
+
+    Geolocation::provider('google')->distanceBetween(new Coordinates(1, 2), new Coordinates(3, 4));
+    Geolocation::provider('google_places')->distanceMatrix([new Coordinates(1, 2)], [new Coordinates(3, 4)]);
+    Geolocation::provider('maxmind_database')->batch(['1.1.1.1', '2.2.2.2']);
+
+    $fake->assertProviderUsed('google');
+    $fake->assertProviderUsed('google_places');
+    $fake->assertProviderUsed('maxmind_database');
+    $fake->assertLocated('2.2.2.2');
+});
+
+it('asserts a provider was not pinned', function () {
+    $fake = Geolocation::fake();
+
+    Geolocation::locateIp('1.1.1.1');
+    $fake->assertProviderNotUsed('ipinfo');
+
+    Geolocation::provider('ipinfo')->locateIp('1.1.1.1');
+
+    expect(fn () => $fake->assertProviderNotUsed('ipinfo'))->toThrow(AssertionFailedError::class);
+});
+
 it('returns a seeded distance and an empty matrix', function () {
     $fake = Geolocation::fake();
     $distance = new Distance('1 km', 1000, '2 mins', 120, DistanceType::Driving);

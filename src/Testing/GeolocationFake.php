@@ -41,10 +41,12 @@ final class GeolocationFake extends GeolocationManager
     private array $located = [];
 
     /**
-     * The provider name pinned via using()/provider() for the next lookup, recorded so it
-     * can be asserted on.
+     * The provider names pinned via using()/provider() for the next call, recorded when that
+     * call (a lookup, batch, distance or matrix) runs so they can be asserted on.
+     *
+     * @var list<string>
      */
-    private ?string $pinnedProvider = null;
+    private array $pinned = [];
 
     /**
      * @var list<string>
@@ -107,19 +109,31 @@ final class GeolocationFake extends GeolocationManager
 
     public function locate(GeolocationQuery $query): ?Location
     {
-        $key = $this->keyFor($query);
-        $this->located[] = $key;
+        $this->consumePinned();
 
-        if ($this->pinnedProvider !== null) {
-            $this->providersUsed[] = $this->pinnedProvider;
-            $this->pinnedProvider = null;
+        return $this->lookup($query);
+    }
+
+    /**
+     * @param  list<string>  $ips
+     * @return array<string, Location|null>
+     */
+    public function batch(array $ips): array
+    {
+        $this->consumePinned();
+
+        $results = [];
+
+        foreach ($ips as $ip) {
+            $results[$ip] = $this->lookup(GeolocationQuery::forIp($ip));
         }
 
-        return $this->results[$key] ?? $this->default;
+        return $results;
     }
 
     public function distance(DistanceQuery $query): ?Distance
     {
+        $this->consumePinned();
         $this->distances[] = $query;
 
         return $this->distance;
@@ -134,6 +148,8 @@ final class GeolocationFake extends GeolocationManager
         array $destinations,
         DistanceType $type = DistanceType::Driving,
     ): DistanceMatrix {
+        $this->consumePinned();
+
         return new DistanceMatrix($origins, $destinations, []);
     }
 
@@ -188,18 +204,20 @@ final class GeolocationFake extends GeolocationManager
         return $this->locateIp($ip);
     }
 
+    /**
+     * Pins the names for the next call — the fake runs no provider, so this is what
+     * assertProviderUsed() checks.
+     */
     public function using(string ...$providers): GeolocationManager
     {
-        $this->pinnedProvider = $providers[0] ?? null;
+        $this->pinned = array_values($providers);
 
         return $this;
     }
 
     public function provider(string $name): GeolocationManager
     {
-        $this->pinnedProvider = $name;
-
-        return $this;
+        return $this->using($name);
     }
 
     public function withToken(string $provider, #[SensitiveParameter] string $token): GeolocationManager
@@ -238,12 +256,25 @@ final class GeolocationFake extends GeolocationManager
         );
     }
 
+    /**
+     * Assert a call ran pinned to this provider via `provider()` / `using()`. The fake runs
+     * no pipeline, so a provider that merely "would have answered" is never recorded.
+     */
     public function assertProviderUsed(string $name): void
     {
         Assert::assertContains(
             $name,
             $this->providersUsed,
             "Failed asserting that provider [{$name}] was used.",
+        );
+    }
+
+    public function assertProviderNotUsed(string $name): void
+    {
+        Assert::assertNotContains(
+            $name,
+            $this->providersUsed,
+            "Failed asserting that provider [{$name}] was not used.",
         );
     }
 
@@ -332,6 +363,20 @@ final class GeolocationFake extends GeolocationManager
     public function assertCacheNotFlushed(): void
     {
         Assert::assertSame(0, $this->flushes, 'Failed asserting that the geolocation cache was not flushed.');
+    }
+
+    private function consumePinned(): void
+    {
+        array_push($this->providersUsed, ...$this->pinned);
+        $this->pinned = [];
+    }
+
+    private function lookup(GeolocationQuery $query): ?Location
+    {
+        $key = $this->keyFor($query);
+        $this->located[] = $key;
+
+        return $this->results[$key] ?? $this->default;
     }
 
     private function keyFor(GeolocationQuery $query): string

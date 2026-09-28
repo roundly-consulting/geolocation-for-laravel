@@ -31,6 +31,7 @@ use RoundlyConsulting\Geolocation\Testing\GeolocationFake;
  * @method static void assertLocated(string $key)
  * @method static void assertNothingLocated()
  * @method static void assertProviderUsed(string $name)
+ * @method static void assertProviderNotUsed(string $name)
  * @method static void assertDistanceRequested(?\RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates $from = null, ?\RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates $to = null, ?\RoundlyConsulting\Geolocation\Enum\DistanceType $type = null)
  * @method static void assertNoDistanceRequested()
  * @method static void assertDatabaseUpdated(?string $edition = null)
