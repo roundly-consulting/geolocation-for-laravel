@@ -19,6 +19,7 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\DistanceQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\DistanceType;
+use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Events\DistanceResolved;
 use RoundlyConsulting\Geolocation\Events\LocationResolutionFailed;
 use RoundlyConsulting\Geolocation\Events\LocationResolved;
@@ -93,7 +94,9 @@ class GeolocationManager
 
         $resolved = $this->scoped(fn (): ?Location => $this->resolveLocation($query));
 
-        if ($resolved instanceof Location && $this->cacheEnabled()) {
+        // The default fallback is what answered because the real providers did not — caching
+        // it would keep serving the fallback for the whole TTL after they recover.
+        if ($resolved instanceof Location && $resolved->type !== GeolocationType::Default && $this->cacheEnabled()) {
             $this->cache()->put($this->cacheKey('locate', $query->cacheKey()), $resolved->toArray(), $this->cacheTtl());
         }
 

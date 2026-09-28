@@ -6,19 +6,21 @@ namespace RoundlyConsulting\Geolocation\Tests\FakeProviders;
 
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
+use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 
 class FakeAlternativeGeolocationProvider implements GeolocationProvider
 {
     public function locate(GeolocationQuery $query): ?Location
     {
-        return Location::createFromDefaults([
-            'humanReadable' => 'Alternative Human Readable',
-            'street' => 'Somewhere',
-            'city' => 'Smallville',
-            'country' => 'SM',
-            'latitude' => 123.456,
-            'longitude' => 789.1011,
-        ]);
+        return new Location(
+            humanReadable: 'Alternative Human Readable',
+            street: 'Somewhere',
+            city: 'Smallville',
+            countryIsoCode: 'SM',
+            latitude: 123.456,
+            longitude: 789.1011,
+            type: GeolocationType::Ip,
+        );
     }
 }

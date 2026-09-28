@@ -47,7 +47,7 @@ it('returns first geolocation provided by any provider', function () {
         ->countryIsoCode->toBe('SM')
         ->latitude->toBe(123.456)
         ->longitude->toBe(789.1011)
-        ->type->toBe(GeolocationType::Default);
+        ->type->toBe(GeolocationType::Ip);
 
     config()->set('geolocation.providers', [
         'alt' => FakeAlternativeGeolocationProvider::class,
@@ -62,7 +62,7 @@ it('returns first geolocation provided by any provider', function () {
         ->countryIsoCode->toBe('SM')
         ->latitude->toBe(123.456)
         ->longitude->toBe(789.1011)
-        ->type->toBe(GeolocationType::Default);
+        ->type->toBe(GeolocationType::Ip);
 });
 
 it('returns distance provided by any provider', function () {
