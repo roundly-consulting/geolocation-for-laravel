@@ -29,5 +29,26 @@ Initial public release.
 - Result caching and events (`LocationResolved`, `DistanceResolved`, `LocationResolutionFailed`).
 - Outbound provider calls paced by http-client-rate-limits-for-laravel, with `Retry-After`
   backoff.
-- The `geolocation:locate` command for smoke-testing credentials, and `Geolocation::fake()` with
-  assertions for your tests.
+- The `geolocation:locate` command for smoke-testing credentials.
+- `Geolocation::distanceBetween($from, $to, $type)` — a distance without hand-building a
+  `DistanceQuery`.
+- `Geolocation::updateDatabase(?$edition, ?$path)` refreshes the MaxMind database from code and
+  returns the written path; `geolocation:db:update` is a thin wrapper over it, and the logic lives
+  in `Actions\UpdateDatabaseAction`. Failures throw `DatabaseUpdateException`.
+- `Geolocation::forget($query)` drops one cached lookup or distance; `Geolocation::flushCache()`
+  invalidates them all on any cache store (cache keys now carry a generation number).
+- `Geolocation::fake()` — a real static on the facade returning `Testing\GeolocationFake`, a
+  subtype of `GeolocationManager` installed behind the facade and in the container. Asserts:
+  `assertLocated`/`assertNothingLocated`, `assertProviderUsed`,
+  `assertDistanceRequested`/`assertNoDistanceRequested`,
+  `assertDatabaseUpdated`/`assertDatabaseNotUpdated`, `assertForgotten`/`assertNothingForgotten`,
+  `assertCacheFlushed`/`assertCacheNotFlushed`.
+- The `Geolocation` global alias is declared in `composer.json` (`extra.laravel.aliases`).
+
+### Changed
+
+- `GeolocationManager::fake()` moved to the facade (`Geolocation::fake()`); the fake class is
+  renamed `FakeGeolocationManager` → `GeolocationFake`, and `GeolocationManager` now takes the
+  container in its constructor.
+- Outbound rate limits are built through the `RateLimits` facade of
+  http-client-rate-limits-for-laravel.

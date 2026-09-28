@@ -121,7 +121,8 @@ other provider needs to be configured.
 
 ## Usage
 
-Use the `Geolocation` facade (or resolve `GeolocationManager` from the container).
+Use the `Geolocation` facade. Every facade method is also available on an injected
+`GeolocationManager` — see [Without the facade](#without-the-facade).
 
 ### One-liner helpers
 
@@ -182,7 +183,18 @@ $distance?->distanceInMeters;      // 133000
 $distance?->durationInSeconds;     // 5400
 ```
 
-`locate()` / `distance()` return `null` when no provider can resolve the query.
+Or skip the query object — `distanceBetween()` builds it for you (driving by default):
+
+```php
+$distance = Geolocation::distanceBetween(
+    new Coordinates(48.1482, 17.1067),
+    new Coordinates(49.2000, 16.6068),
+    DistanceType::Walking,
+);
+```
+
+`locate()` / `distance()` / `distanceBetween()` return `null` when no provider can resolve the
+query.
 
 ### Scoping a single call to specific providers
 
@@ -215,6 +227,24 @@ $matrix = Geolocation::distanceMatrix(
 
 $matrix->get(0, 1)?->distanceInMeters;
 ```
+
+### Caching
+
+With `geolocation.cache.enabled`, successful lookups and distances are cached for
+`cache.ttl` seconds (failures never are). Drop one entry, or all of them:
+
+```php
+use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
+
+Geolocation::forget(GeolocationQuery::forIp('8.8.8.8'));   // true when an entry was removed
+Geolocation::forget(DistanceQuery::between($from, $to));  // distances too
+
+Geolocation::flushCache();                                 // every lookup and distance
+```
+
+`flushCache()` works on any cache store without touching other keys: cache keys carry a
+generation number (`geolocation:v3:locate:…`) and a flush moves it forward, so older entries are
+never read again and expire on their own TTL.
 
 ### Geofencing helpers on `Coordinates`
 
@@ -279,9 +309,47 @@ Geolocation::withConfig(['token' => '…', 'timeout' => 3])->locateIp('8.8.8.8')
 
 The `GeolocationManager` is also `Macroable`, so host apps can add their own methods.
 
+### Without the facade
+
+The facade is sugar over `GeolocationManager`, a container singleton — inject it and call the
+same methods:
+
+```php
+use RoundlyConsulting\Geolocation\GeolocationManager;
+
+final class CheckoutController
+{
+    public function __construct(private GeolocationManager $geolocation) {}
+
+    public function __invoke(Request $request)
+    {
+        $location = $this->geolocation->locateRequest($request);
+
+        $distance = $location === null
+            ? null
+            : $this->geolocation->distanceBetween($this->warehouse(), $location->coordinates());
+        // ...
+    }
+}
+```
+
+The one state-changing use case, refreshing the MaxMind database, is also an action you can
+resolve directly (e.g. from your own scheduled job):
+
+```php
+use RoundlyConsulting\Geolocation\Actions\UpdateDatabaseAction;
+
+$path = app(UpdateDatabaseAction::class)->execute(edition: 'GeoLite2-City');
+```
+
+Lookups and distances have no action classes: they run through the provider pipeline, and each
+provider is a remote-API client you can swap in the `providers` map.
+
 ### Testing with the fake
 
-Swap the manager for a recording fake in your host-app tests — no network, canned results:
+Swap the manager for a recording fake in your host-app tests — no network, no cache, no
+download, canned results. It replaces the facade root **and** the container binding, so
+injected managers and `$request->location()` are faked too:
 
 ```php
 use RoundlyConsulting\Geolocation\Facades\Geolocation;
@@ -292,11 +360,15 @@ $this->get('/checkout');
 
 $fake->assertLocated('8.8.8.8');
 $fake->assertProviderUsed('ipinfo');
-$fake->assertNothingLocated();
+$fake->assertDistanceRequested(from: $warehouse);   // any argument may be omitted
+$fake->assertDatabaseUpdated('GeoLite2-City');      // also records geolocation:db:update
+$fake->assertForgotten(GeolocationQuery::forIp('8.8.8.8'));
+$fake->assertCacheFlushed();
 ```
 
-Seed more results fluently with `$fake->seed($key, $location)`, `seedDefault()`, and
-`seedDistance()`.
+Each assert has a negative twin: `assertNothingLocated()`, `assertNoDistanceRequested()`,
+`assertDatabaseNotUpdated()`, `assertNothingForgotten()`, `assertCacheNotFlushed()`. Seed more
+results fluently with `$fake->seed($key, $location)`, `seedDefault()`, and `seedDistance()`.
 
 ### Registering a custom provider
 
@@ -354,7 +426,8 @@ php artisan geolocation:locate 8.8.8.8 --json
 The command exits non-zero when nothing resolves — handy for smoke-testing credentials and
 your `.mmdb` wiring.
 
-Download or refresh the MaxMind database (see below):
+Download or refresh the MaxMind database (see below) — a thin wrapper over
+`Geolocation::updateDatabase()`:
 
 ```bash
 php artisan geolocation:db:update
@@ -387,6 +460,18 @@ MaxMind account and license key:
 MAXMIND_LICENSE_KEY=your-license-key
 MAXMIND_DB_EDITION=GeoLite2-City   # GeoLite2-City | GeoLite2-Country | a GeoIP2 edition
 ```
+
+Or refresh it from code — both arguments default to the config above, and the written path is
+returned:
+
+```php
+$path = Geolocation::updateDatabase();
+$path = Geolocation::updateDatabase('GeoLite2-Country', '/var/data/country.mmdb');
+```
+
+A missing license key or path, a failed download or an archive that can't be unpacked throws
+`DatabaseUpdateException` (a `GeolocationException`); the command prints the same message and
+exits non-zero.
 
 ## MaxMind web service
 
@@ -521,8 +606,8 @@ The `rate_limits` block exists on the four HTTP providers (`google`, `ipinfo`,
 
 ## Notes
 
-- Use the `RoundlyConsulting\Geolocation\Facades\Geolocation` facade, or resolve
-  `GeolocationManager` from the container.
+- Use the `RoundlyConsulting\Geolocation\Facades\Geolocation` facade (global alias
+  `Geolocation`, registered through package discovery), or inject `GeolocationManager`.
 - The `providers` config is a **named map** (name → class); `pipeline` and `provider()` refer to
   providers by that name.
 - `GeolocationQuery`/`DistanceQuery` provide named constructors
