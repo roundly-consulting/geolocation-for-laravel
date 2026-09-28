@@ -9,6 +9,7 @@ use Illuminate\Http\Client\Response;
 use RoundlyConsulting\Geolocation\Exceptions\RateLimitExceededException;
 use RoundlyConsulting\HttpClientRateLimits\Enums\Timespan;
 use RoundlyConsulting\HttpClientRateLimits\Exceptions\RateLimitExceededException as HttpRateLimitExceededException;
+use RoundlyConsulting\HttpClientRateLimits\Facades\RateLimits;
 use RoundlyConsulting\HttpClientRateLimits\Limit;
 use RoundlyConsulting\HttpClientRateLimits\RateLimit;
 
@@ -43,7 +44,7 @@ trait InteractsWithRateLimits
         $timespan = Timespan::tryFrom((string) ($config['per'] ?? 'second')) ?? Timespan::Second;
         $owner = (string) ($config['owner'] ?? 'app');
 
-        $rateLimit = RateLimit::make(new Limit(
+        $rateLimit = RateLimits::make(new Limit(
             maxAttempts: (int) ($config['limit'] ?? 60),
             timespan: $timespan,
         ))->by("geolocation:{$provider}:{$owner}");
