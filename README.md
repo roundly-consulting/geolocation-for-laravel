@@ -91,6 +91,18 @@ returning the first non-null answer:
 Providers are tried in `pipeline` order; reorder them in config to change precedence. A
 successful resolution can be cached and dispatches an event.
 
+A provider whose API **cannot be reached** (timeout, DNS failure, refused connection) counts as
+a miss: the pipeline moves on to the next provider instead of throwing. Its error is reported,
+with credentials redacted, on the `LocationResolutionFailed` event (see [Events](#events)). A
+few errors still abort the lookup on purpose: a fail-fast `RateLimitExceededException`, a
+missing or corrupt MaxMind database, and any exception your own provider throws.
+
+**An unresolved lookup is `null`.** `locate*()`, `distance()` and `distanceBetween()` return
+`null` when no provider answers. The `default` provider only answers once you configure a
+default location (any `geolocation.default.*` value); with the shipped empty values it answers
+`null` as well. When it does answer, the `Location` has `type === GeolocationType::Default`, so
+you can tell a fallback from a real lookup.
+
 ### Bundled providers
 
 | Name | Class | Location | Distance | Source |
@@ -103,8 +115,14 @@ successful resolution can be cached and dispatches an event.
 | `default` | `DefaultLocationProvider` | yes (static fallback) | no | config values |
 
 Both MaxMind providers are **disabled by default** and return `null` immediately until you
-enable them and supply credentials / a database path, so the package works out of the box with
-just IPinfo, Google, and the default fallback.
+enable them and supply credentials / a database path.
+
+**What calls the network by default.** With the shipped config an IP lookup sends the IP to
+`api.ip2location.io` and then `ipinfo.io`, even without `IP2LOCATION_API_KEY` / `IPINFO_TOKEN`
+(the request is then unauthenticated). An address or coordinate lookup, and every distance,
+goes to Google (it needs `GOOGLE_MAPS_API_KEY` to succeed). `maxmind_database` and `default`
+never touch the network. To keep IPs on your own servers, trim the `pipeline` (for example to
+`['maxmind_database', 'default']`). In tests, `Geolocation::fake()` never calls a provider.
 
 ### Running a single provider
 
@@ -116,8 +134,9 @@ Geolocation::provider('ipinfo')->locateIp($request->ip());
 Geolocation::using('maxmind_database')->locateIp($request->ip());
 ```
 
-`provider()` / `using()` restrict that one resolution to the named provider(s) only — no
-other provider needs to be configured.
+`provider()` / `using()` return a **scoped copy** of the manager that consults only the named
+provider(s). No other provider needs to be configured, and the shared manager is never changed,
+so the scope cannot leak into later calls (even when a provider throws).
 
 ## Usage
 
@@ -131,13 +150,18 @@ use RoundlyConsulting\Geolocation\Facades\Geolocation;
 
 $location = Geolocation::locateIp('8.8.8.8');
 $location = Geolocation::locateRequest();                              // auto-detects the client IP
-$location = Geolocation::locateAddress('1600 Amphitheatre Pkwy, Mountain View');
 
 $location?->city;           // "Mountain View"
 $location?->region;         // "California"
 $location?->postalCode;     // "94043"
 $location?->countryIsoCode; // "US"
-$location?->timezone;       // "America/Los_Angeles"
+$location?->timezone;       // "America/Los_Angeles" (IP providers only)
+$location?->latitude;       // 37.4056
+
+$location = Geolocation::locateAddress('1600 Amphitheatre Pkwy, Mountain View');
+
+$location?->city;           // "Mountain View"
+$location?->timezone;       // "" (Google geocoding returns no timezone)
 $location?->latitude;       // 37.4224
 ```
 
@@ -194,7 +218,7 @@ $distance = Geolocation::distanceBetween(
 ```
 
 `locate()` / `distance()` / `distanceBetween()` return `null` when no provider can resolve the
-query.
+query, including when every provider is unreachable.
 
 ### Scoping a single call to specific providers
 
@@ -202,9 +226,13 @@ query.
 $location = Geolocation::using('maxmind_database', 'ipinfo')->locateIp($request->ip());
 ```
 
+Like `provider()`, `using()` returns a scoped copy, so it applies to the whole call it is
+chained to (every IP of a `batch()` included) and to nothing else.
+
 ### Batch lookups
 
-Resolve many IPs at once. Failures are isolated per item — the batch never aborts:
+Resolve many IPs at once. Failures are isolated per item, so the batch never aborts. A scope or
+override chained before `batch()` applies to every IP:
 
 ```php
 $results = Geolocation::batch(['8.8.8.8', '1.1.1.1', '203.0.113.7']);
@@ -215,7 +243,8 @@ $results['8.8.8.8']?->city;   // a Location or null per IP
 ### Distance matrix
 
 Resolve a grid of distances between several origins and destinations in one call (Google
-Distance Matrix). Unavailable legs degrade to `null`:
+Distance Matrix). Unavailable legs degrade to `null`, and so does every cell when Google cannot
+be reached:
 
 ```php
 use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
@@ -231,9 +260,13 @@ $matrix->get(0, 1)?->distanceInMeters;
 ### Caching
 
 With `geolocation.cache.enabled`, successful lookups and distances are cached for
-`cache.ttl` seconds (failures never are). Drop one entry, or all of them:
+`cache.ttl` seconds. Failures never are, and neither is the `default` fallback: it only
+answered because the real providers did not, so the next call asks them again. Scoped or
+overridden calls (`provider()`, `using()`, `with*()`) bypass the cache. Drop one entry, or all
+of them:
 
 ```php
+use RoundlyConsulting\Geolocation\DataTransferObjects\DistanceQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 
 Geolocation::forget(GeolocationQuery::forIp('8.8.8.8'));   // true when an entry was removed
@@ -261,6 +294,13 @@ $box = $here->boundingBox(radiusKm: 10);                    // BoundingBox
 $box->contains($point);                                     // bool
 ```
 
+These work across the antimeridian and near the poles: `midpointTo()` normalises the longitude
+into -180..180, a bounding box that crosses ±180° wraps (`$box->crossesAntimeridian()` is then
+`true` and its south-west longitude is greater than its north-east one), and a circle that
+reaches a pole spans every longitude. `within()` treats each polygon edge as the shorter way
+around, so a polygon drawn across the antimeridian works. A polygon that encloses a pole is not
+supported.
+
 ### Storing coordinates on a model
 
 Cast latitude/longitude columns to a `Coordinates` value object with the `HasLocation` trait,
@@ -283,6 +323,10 @@ $store->save();
 Store::query()->withinRadius(new Coordinates(48.15, 17.11), radiusKm: 5)->get();
 ```
 
+`withinRadius()` filters on the bounding box, so near the antimeridian it matches longitudes on
+both sides of ±180°, and near a pole it matches every longitude. Check the exact distance in PHP
+(`$center->near($store->coordinates, 5)`) when the box's corners matter.
+
 You can also apply the cast directly: `protected $casts = ['coordinates' => CoordinatesCast::class];`.
 
 ### Validation rule & request macro
@@ -299,13 +343,19 @@ $location = $request->location();        // resolves the client's Location from 
 
 ### Per-call provider overrides
 
-Tweak a provider's token or timeout for one resolution without touching global config:
+Tweak a provider's token, timeout or other settings for one call without touching global
+config. A token is vendor-specific, so `withToken()` and `withConfig()` name the provider they
+target. No other provider ever sees that value. `withTimeout()` applies to every provider:
 
 ```php
-Geolocation::withToken('runtime-token')->locateIp('8.8.8.8');
+Geolocation::withToken('ipinfo', 'runtime-token')->locateIp('8.8.8.8');
 Geolocation::withTimeout(10)->locateIp('8.8.8.8');
-Geolocation::withConfig(['token' => '…', 'timeout' => 3])->locateIp('8.8.8.8');
+Geolocation::withConfig('ipinfo', ['token' => '…', 'timeout' => 3])->locateIp('8.8.8.8');
 ```
+
+Each call returns a scoped copy of the manager, so the override lasts exactly as long as the
+call chain it is attached to (every IP of a `batch()` included). Naming a provider that isn't
+registered throws `UnknownProviderException`.
 
 The `GeolocationManager` is also `Macroable`, so host apps can add their own methods.
 
@@ -356,19 +406,25 @@ use RoundlyConsulting\Geolocation\Facades\Geolocation;
 
 $fake = Geolocation::fake(['8.8.8.8' => $expectedLocation]);
 
-$this->get('/checkout');
+$this->get('/checkout');   // e.g. calls Geolocation::provider('ipinfo')->locateIp($ip)
 
 $fake->assertLocated('8.8.8.8');
-$fake->assertProviderUsed('ipinfo');
+$fake->assertProviderUsed('ipinfo');                // a provider pinned via provider()/using()
 $fake->assertDistanceRequested(from: $warehouse);   // any argument may be omitted
 $fake->assertDatabaseUpdated('GeoLite2-City');      // also records geolocation:db:update
 $fake->assertForgotten(GeolocationQuery::forIp('8.8.8.8'));
 $fake->assertCacheFlushed();
 ```
 
-Each assert has a negative twin: `assertNothingLocated()`, `assertNoDistanceRequested()`,
-`assertDatabaseNotUpdated()`, `assertNothingForgotten()`, `assertCacheNotFlushed()`. Seed more
-results fluently with `$fake->seed($key, $location)`, `seedDefault()`, and `seedDistance()`.
+The fake runs no provider, so `assertProviderUsed()` checks the names your code pinned with
+`provider()` / `using()` for a lookup, batch, distance or matrix. It does not check which
+provider "would have answered". Coordinate lookups are keyed `"lat,lng"` in plain decimals
+(`"0.00001,0"`, never `"1.0E-5,0"`).
+
+Each assert has a negative twin: `assertNothingLocated()`, `assertProviderNotUsed()`,
+`assertNoDistanceRequested()`, `assertDatabaseNotUpdated()`, `assertNothingForgotten()`,
+`assertCacheNotFlushed()`. Seed more results fluently with `$fake->seed($key, $location)`,
+`seedDefault()`, and `seedDistance()`.
 
 ### Registering a custom provider
 
@@ -404,7 +460,13 @@ When `geolocation.events.enabled` is true (the default), the manager dispatches:
 
 - `RoundlyConsulting\Geolocation\Events\LocationResolved` — `($query, $location, $provider)`
 - `RoundlyConsulting\Geolocation\Events\DistanceResolved` — `($query, $distance, $provider)`
-- `RoundlyConsulting\Geolocation\Events\LocationResolutionFailed` — `($query, $provider, $error)`
+- `RoundlyConsulting\Geolocation\Events\LocationResolutionFailed` — `($query, $provider, $error)`,
+  dispatched whenever a lookup ends without a location:
+  - every provider missed → `$provider` / `$error` name the **last provider that was
+    unreachable** and its `ProviderUnavailableException` (message redacted, no credentials),
+    or are both `null` when every provider simply had no answer;
+  - a provider threw → `$provider` / `$error` are that provider and its exception, which is then
+    rethrown.
 
 ```php
 use Illuminate\Support\Facades\Event;
@@ -450,6 +512,11 @@ A corrupt file throws `InvalidDatabaseException`. A lookup that simply isn't in 
 returns `null`. When the provider is enabled but the database file is missing, it throws a
 `DatabaseNotFoundException` whose message tells you to run `php artisan geolocation:db:update`.
 
+The file is read into memory **once per process** (a GeoLite2-City file is tens of megabytes)
+and shared by every lookup. When the file on disk changes, for example after
+`geolocation:db:update`, the next lookup reloads it, so long-running workers pick up a refreshed
+database without a restart.
+
 ### Downloading the database
 
 `geolocation:db:update` fetches the GeoLite2/GeoIP2 `.mmdb` from MaxMind and writes it to the
@@ -469,9 +536,15 @@ $path = Geolocation::updateDatabase();
 $path = Geolocation::updateDatabase('GeoLite2-Country', '/var/data/country.mmdb');
 ```
 
-A missing license key or path, a failed download or an archive that can't be unpacked throws
-`DatabaseUpdateException` (a `GeolocationException`); the command prints the same message and
-exits non-zero.
+A missing license key or path, a failed download (an HTTP error, a timeout or an unreachable
+host) or an archive that can't be unpacked throws `DatabaseUpdateException` (a
+`GeolocationException`); the command prints the same message and exits non-zero. The license
+key travels in the download URL, so it is redacted from that message and the transport
+exception is not chained as `previous`.
+
+The new file is written beside the old one and then renamed over it, so a lookup running during
+an update reads either the old database or the new one, never a half-written file. A failed
+update leaves the current database in place.
 
 ## MaxMind web service
 
@@ -568,7 +641,12 @@ Published to `config/geolocation.php`. Every key:
 | `cache.ttl` | `int` | `86400` | Cache TTL in seconds (`GEOLOCATION_CACHE_TTL`). |
 | `cache.prefix` | `string` | `geolocation` | Cache key prefix (`GEOLOCATION_CACHE_PREFIX`). |
 | `events.enabled` | `bool` | `true` | Dispatch resolution events (`GEOLOCATION_EVENTS`). |
-| `default.*` | `string`/`float` | empty | Static location returned by `DefaultLocationProvider`. |
+| `default.humanReadable` | `string` | `''` | Fallback location's display name (`GEOLOCATION_DEFAULT_HUMAN_READABLE`). |
+| `default.street` | `string` | `''` | Fallback street (`GEOLOCATION_DEFAULT_STREET`). |
+| `default.city` | `string` | `''` | Fallback city (`GEOLOCATION_DEFAULT_CITY`). |
+| `default.country` | `string` | `''` | Fallback ISO country code (`GEOLOCATION_DEFAULT_COUNTRY_ISO_CODE`). |
+| `default.latitude` | `float` | `0.0` | Fallback latitude (`GEOLOCATION_DEFAULT_LATITUDE`). |
+| `default.longitude` | `float` | `0.0` | Fallback longitude (`GEOLOCATION_DEFAULT_LONGITUDE`). |
 | `services.ipinfo.url` | `string` | `https://ipinfo.io/` | IPinfo base URL (`IPINFO_URL`). |
 | `services.ipinfo.token` | `?string` | `null` | IPinfo token; omitted when null (`IPINFO_TOKEN`). |
 | `services.ipinfo.retry` | `int` | `3` | Retry attempts (`IPINFO_RETRY_TIMES`). |
@@ -613,6 +691,9 @@ The `rate_limits` block exists on the four HTTP providers (`google`, `ipinfo`,
 - `GeolocationQuery`/`DistanceQuery` provide named constructors
   (`forIp`/`forAddress`/`forCoordinates`, `between`).
 - `Location` exposes optional `region`, `postalCode`, and `timezone` fields (default `''`).
+  Only the IP providers fill `timezone`.
+- The `default.*` values form the `DefaultLocationProvider`'s fallback location. While they are
+  all empty or zero (the shipped values), that provider answers `null`.
 
 ## Testing
 

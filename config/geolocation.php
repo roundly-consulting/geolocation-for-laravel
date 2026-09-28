@@ -18,8 +18,12 @@ return [
     |
     | The ordered list of provider names consulted when resolving a location or
     | a distance. The first provider that returns a non-null result wins, so
-    | order them from most to least specific. Each name must map to an entry in
-    | the "providers" map below.
+    | order them from most to least specific; one whose API is unreachable is
+    | skipped. Each name must map to an entry in the "providers" map below.
+    |
+    | With these defaults an IP lookup calls api.ip2location.io and ipinfo.io
+    | (unauthenticated when no key/token is set); address and coordinate
+    | lookups call Google. The MaxMind database and default never call out.
     |
     */
 
@@ -61,7 +65,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | Successful (non-null) lookups can be cached so repeated resolutions are
-    | cheap and rate-limit friendly. Failures are never cached.
+    | cheap and rate-limit friendly. Failures are never cached, and neither is
+    | the default fallback location.
     |
     */
 
@@ -92,7 +97,9 @@ return [
     |--------------------------------------------------------------------------
     |
     | Returned by the DefaultLocationProvider as a last-resort fallback when no
-    | upstream provider could resolve a location.
+    | upstream provider could resolve a location. While every value is empty
+    | or zero (the shipped values) it answers null instead, so an unresolved
+    | lookup stays null.
     |
     */
 
