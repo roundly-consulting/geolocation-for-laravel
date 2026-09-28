@@ -21,6 +21,7 @@ use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
+use RoundlyConsulting\Geolocation\Support\Decimal;
 
 /**
  * Resolves geolocation via Google's Geocoding API and travel distance via the
@@ -35,8 +36,8 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
     {
         try {
             $response = $this->throttled('google', fn (): Response => $this->client()->get('/distancematrix/json', [
-                'origins' => "{$query->fromLatitude},{$query->fromLongitude}",
-                'destinations' => "{$query->toLatitude},{$query->toLongitude}",
+                'origins' => Decimal::pair($query->fromLatitude, $query->fromLongitude),
+                'destinations' => Decimal::pair($query->toLatitude, $query->toLongitude),
                 'mode' => $query->type === DistanceType::Driving ? 'driving' : 'walking',
             ]));
         } catch (ConnectionException $e) {
@@ -148,7 +149,7 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
     private function encode(array $points): string
     {
         return implode('|', array_map(
-            static fn (Coordinates $point): string => "{$point->latitude},{$point->longitude}",
+            static fn (Coordinates $point): string => Decimal::pair($point->latitude, $point->longitude),
             $points,
         ));
     }
@@ -190,7 +191,7 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
     private function geocodeParameters(GeolocationQuery $query): ?array
     {
         if ($query->latitude !== null && $query->longitude !== null) {
-            return ['latlng' => "{$query->latitude},{$query->longitude}"];
+            return ['latlng' => Decimal::pair($query->latitude, $query->longitude)];
         }
 
         if ($query->address !== null && $query->address !== '') {

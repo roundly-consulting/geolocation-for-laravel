@@ -225,3 +225,11 @@ it('records cache flushes', function () {
 
     expect(fn () => $fake->assertCacheNotFlushed())->toThrow(AssertionFailedError::class);
 });
+
+it('keys a tiny coordinate lookup as a plain decimal', function (): void {
+    $fake = Geolocation::fake();
+
+    Geolocation::locateCoordinates(new Coordinates(0.00001, 0.0));
+
+    $fake->assertLocated('0.00001,0');
+});

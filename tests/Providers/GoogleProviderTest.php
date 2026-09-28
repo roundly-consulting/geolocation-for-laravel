@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Http;
+use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Distance;
 use RoundlyConsulting\Geolocation\DataTransferObjects\DistanceQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
@@ -171,4 +172,24 @@ it('returns null when geocoding yields no results', function (): void {
     ]);
 
     expect((new GoogleProvider)->locate(new GeolocationQuery(latitude: 1, longitude: 2)))->toBeNull();
+});
+
+it('never sends coordinates in scientific notation', function (): void {
+    Http::fake([
+        '*/geocode/json*' => Http::response(['results' => []]),
+        '*/distancematrix/json*' => Http::response(['rows' => []]),
+    ]);
+
+    $provider = new GoogleProvider;
+    $provider->locate(GeolocationQuery::forCoordinates(new Coordinates(0.00001, -0.00002)));
+    $provider->distance(new DistanceQuery(0.00001, 0.0, -0.00005, 0.00003, DistanceType::Driving));
+    $provider->distanceMatrix(
+        [new Coordinates(0.00001, 0.0)],
+        [new Coordinates(-0.00005, 0.00003)],
+    );
+
+    Http::assertSent(fn ($request): bool => ($request->data()['latlng'] ?? null) === '0.00001,-0.00002');
+    Http::assertSent(fn ($request): bool => ($request->data()['origins'] ?? null) === '0.00001,0'
+        && ($request->data()['destinations'] ?? null) === '-0.00005,0.00003');
+    Http::assertNotSent(fn ($request): bool => str_contains(urldecode($request->url()), 'E-'));
 });

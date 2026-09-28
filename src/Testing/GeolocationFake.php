@@ -15,6 +15,7 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\GeolocationManager;
+use RoundlyConsulting\Geolocation\Support\Decimal;
 use SensitiveParameter;
 
 /**
@@ -344,7 +345,7 @@ final class GeolocationFake extends GeolocationManager
         }
 
         if ($query->latitude !== null && $query->longitude !== null) {
-            return "{$query->latitude},{$query->longitude}";
+            return Decimal::pair($query->latitude, $query->longitude);
         }
 
         return '';
