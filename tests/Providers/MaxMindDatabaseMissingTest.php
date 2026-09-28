@@ -10,19 +10,19 @@ it('throws an actionable exception when the database file is missing', function 
     config()->set('geolocation.services.maxmind_database.enabled', true);
     config()->set('geolocation.services.maxmind_database.path', '/tmp/does-not-exist-'.uniqid().'.mmdb');
 
-    (new MaxMindDatabaseProvider)->locate(new GeolocationQuery('8.8.8.8'));
+    app(MaxMindDatabaseProvider::class)->locate(new GeolocationQuery('8.8.8.8'));
 })->throws(DatabaseNotFoundException::class, 'geolocation:db:update');
 
 it('throws an actionable exception when no path is configured', function () {
     config()->set('geolocation.services.maxmind_database.enabled', true);
     config()->set('geolocation.services.maxmind_database.path', null);
 
-    (new MaxMindDatabaseProvider)->locate(new GeolocationQuery('8.8.8.8'));
+    app(MaxMindDatabaseProvider::class)->locate(new GeolocationQuery('8.8.8.8'));
 })->throws(DatabaseNotFoundException::class, 'geolocation:db:update');
 
 it('does not touch the database when the provider is disabled', function () {
     config()->set('geolocation.services.maxmind_database.enabled', false);
     config()->set('geolocation.services.maxmind_database.path', '/tmp/missing.mmdb');
 
-    expect((new MaxMindDatabaseProvider)->locate(new GeolocationQuery('8.8.8.8')))->toBeNull();
+    expect(app(MaxMindDatabaseProvider::class)->locate(new GeolocationQuery('8.8.8.8')))->toBeNull();
 });

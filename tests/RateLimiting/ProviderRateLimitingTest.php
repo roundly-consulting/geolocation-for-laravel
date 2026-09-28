@@ -179,7 +179,7 @@ it('never throttles the offline maxmind database provider', function (): void {
     config()->set('geolocation.services.maxmind_database.path', __DIR__.'/../Fixtures/test-data/GeoIP2-City-Test.mmdb');
     $fake = RateLimits::fake();
 
-    (new MaxMindDatabaseProvider)->locate(new GeolocationQuery('2.125.160.216'));
+    app(MaxMindDatabaseProvider::class)->locate(new GeolocationQuery('2.125.160.216'));
 
     $fake->assertNothingDeferred();
     expect($fake->allowedCount())->toBe(0);

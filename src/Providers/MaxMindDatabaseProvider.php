@@ -10,14 +10,18 @@ use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Exceptions\DatabaseNotFoundException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 use RoundlyConsulting\Geolocation\MaxMind\Reader;
+use RoundlyConsulting\Geolocation\MaxMind\ReaderCache;
 
 /**
  * Resolves a location from a local MaxMind .mmdb file using a native binary reader
- * (no geoip2/maxmind-db runtime dependency).
+ * (no geoip2/maxmind-db runtime dependency). The open reader is shared per process through
+ * ReaderCache, so the file is read once rather than on every lookup.
  */
 final class MaxMindDatabaseProvider implements GeolocationProvider
 {
-    private ?Reader $reader = null;
+    public function __construct(
+        private readonly ReaderCache $readers,
+    ) {}
 
     public function locate(GeolocationQuery $query): ?Location
     {
@@ -40,10 +44,6 @@ final class MaxMindDatabaseProvider implements GeolocationProvider
 
     private function reader(): Reader
     {
-        if ($this->reader instanceof Reader) {
-            return $this->reader;
-        }
-
         /** @var string|null $path */
         $path = config('geolocation.services.maxmind_database.path');
 
@@ -53,7 +53,7 @@ final class MaxMindDatabaseProvider implements GeolocationProvider
             throw DatabaseNotFoundException::missing($path);
         }
 
-        return $this->reader = new Reader($path);
+        return $this->readers->get($path);
     }
 
     /**

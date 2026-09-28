@@ -21,18 +21,18 @@ beforeEach(function (): void {
 it('returns null when the database provider is disabled', function (): void {
     config()->set('geolocation.services.maxmind_database.enabled', false);
 
-    expect((new MaxMindDatabaseProvider)->locate(new GeolocationQuery('2.125.160.216')))->toBeNull();
+    expect(app(MaxMindDatabaseProvider::class)->locate(new GeolocationQuery('2.125.160.216')))->toBeNull();
 });
 
 it('returns null for a missing or invalid ip', function (): void {
-    $provider = new MaxMindDatabaseProvider;
+    $provider = app(MaxMindDatabaseProvider::class);
 
     expect($provider->locate(new GeolocationQuery))->toBeNull()
         ->and($provider->locate(new GeolocationQuery('not-an-ip')))->toBeNull();
 });
 
 it('maps a database record into a location', function (): void {
-    $location = (new MaxMindDatabaseProvider)->locate(new GeolocationQuery('2.125.160.216'));
+    $location = app(MaxMindDatabaseProvider::class)->locate(new GeolocationQuery('2.125.160.216'));
 
     expect($location)->toBeInstanceOf(Location::class)
         ->city->toBe('Boxford')
@@ -47,17 +47,17 @@ it('maps a database record into a location', function (): void {
 });
 
 it('returns null for an ip absent from the database', function (): void {
-    expect((new MaxMindDatabaseProvider)->locate(new GeolocationQuery('10.10.10.10')))->toBeNull();
+    expect(app(MaxMindDatabaseProvider::class)->locate(new GeolocationQuery('10.10.10.10')))->toBeNull();
 });
 
 it('throws when the configured database path is missing', function (): void {
     config()->set('geolocation.services.maxmind_database.path', null);
 
-    (new MaxMindDatabaseProvider)->locate(new GeolocationQuery('2.125.160.216'));
+    app(MaxMindDatabaseProvider::class)->locate(new GeolocationQuery('2.125.160.216'));
 })->throws(DatabaseNotFoundException::class);
 
 it('reuses the reader across lookups', function (): void {
-    $provider = new MaxMindDatabaseProvider;
+    $provider = app(MaxMindDatabaseProvider::class);
 
     expect($provider->locate(new GeolocationQuery('2.125.160.216')))->not->toBeNull()
         ->and($provider->locate(new GeolocationQuery('81.2.69.142')))->not->toBeNull();

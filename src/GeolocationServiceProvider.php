@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Geolocation;
 
 use RoundlyConsulting\Geolocation\Commands\LocateCommand;
 use RoundlyConsulting\Geolocation\Commands\UpdateDatabaseCommand;
+use RoundlyConsulting\Geolocation\MaxMind\ReaderCache;
 use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
 use RoundlyConsulting\Geolocation\Support\RequestMacro;
 use RoundlyConsulting\Geolocation\Support\ValidationRules;
@@ -41,6 +42,7 @@ final class GeolocationServiceProvider extends PackageServiceProvider
         parent::register();
 
         $this->app->singleton(ProviderOverrides::class);
+        $this->app->singleton(ReaderCache::class);
         $this->app->singleton(GeolocationManager::class);
         $this->app->alias(GeolocationManager::class, 'geolocation');
     }
