@@ -60,6 +60,19 @@ it('reports a clear error when the download fails', function () {
         ->assertExitCode(1);
 });
 
+it('exits non-zero with a redacted message when maxmind is unreachable', function () {
+    config()->set('geolocation.services.maxmind_database.license_key', 'MM-LICENSE-SECRET');
+
+    Http::fake([
+        'download.maxmind.com/*' => failedConnection(),
+    ]);
+
+    $this->artisan('geolocation:db:update', ['--path' => storage_path('app/geolocation/x.mmdb')])
+        ->expectsOutputToContain('Download failed')
+        ->doesntExpectOutputToContain('MM-LICENSE-SECRET')
+        ->assertExitCode(1);
+});
+
 it('reports a clear error when the archive is not valid gzip', function () {
     config()->set('geolocation.services.maxmind_database.license_key', 'key');
 

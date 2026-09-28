@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Geolocation\Exceptions;
 
+use RoundlyConsulting\Geolocation\Support\Redactor;
 use Throwable;
 
 /**
@@ -28,9 +29,15 @@ final class DatabaseUpdateException extends GeolocationException
         );
     }
 
-    public static function downloadFailed(Throwable $previous): self
+    /**
+     * The cause is NOT chained as `previous`: a transport error quotes the download URL —
+     * license key included — and a chained exception reaches logs and error trackers as is.
+     *
+     * @param  list<mixed>  $secrets  credential values to scrub from the cause's message
+     */
+    public static function downloadFailed(Throwable $cause, array $secrets = []): self
     {
-        return new self("Download failed: {$previous->getMessage()}", previous: $previous);
+        return new self('Download failed: '.Redactor::redact($cause->getMessage(), $secrets));
     }
 
     public static function unpackFailed(Throwable $previous): self

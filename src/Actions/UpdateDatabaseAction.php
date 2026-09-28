@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Geolocation\Actions;
 
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Str;
 use PharData;
 use PharFileInfo;
 use RecursiveIteratorIterator;
@@ -52,8 +54,9 @@ final readonly class UpdateDatabaseAction
 
         try {
             $archive = $this->download($edition, $licenseKey);
-        } catch (RequestException|RuntimeException $e) {
-            throw DatabaseUpdateException::downloadFailed($e);
+        } catch (ConnectionException|RequestException|RuntimeException $e) {
+            // The license key rides in the download URL, which a transport error quotes.
+            throw DatabaseUpdateException::downloadFailed($e, [$licenseKey]);
         }
 
         try {
@@ -119,7 +122,7 @@ final readonly class UpdateDatabaseAction
     }
 
     /**
-     * Unpack the gzipped tarball, locate the .mmdb member and copy it to the destination.
+     * Unpack the gzipped tarball, locate the .mmdb member and swap it in at the destination.
      */
     private function extract(string $archive, string $edition, string $destination): void
     {
@@ -141,9 +144,33 @@ final readonly class UpdateDatabaseAction
                 throw new RuntimeException("No .mmdb file was found inside the [{$edition}] archive.");
             }
 
-            file_put_contents($destination, $contents);
+            $this->replace($destination, $contents);
         } finally {
             @unlink($tarPath);
+        }
+    }
+
+    /**
+     * Write to a temporary file beside the destination, then rename() it over the live
+     * database: the swap is atomic on one filesystem, so a lookup running meanwhile reads
+     * either the old file or the new one — never a half-written one.
+     */
+    private function replace(string $destination, string $contents): void
+    {
+        $temporary = $destination.'.tmp'.Str::random(8);
+
+        try {
+            if (file_put_contents($temporary, $contents) !== strlen($contents)) {
+                throw new RuntimeException("Unable to write the database to [{$temporary}].");
+            }
+
+            if (! rename($temporary, $destination)) {
+                throw new RuntimeException("Unable to move the database into place at [{$destination}].");
+            }
+        } finally {
+            if (is_file($temporary)) {
+                @unlink($temporary);
+            }
         }
     }
 

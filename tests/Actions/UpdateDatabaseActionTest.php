@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use RoundlyConsulting\Geolocation\Actions\UpdateDatabaseAction;
 use RoundlyConsulting\Geolocation\Exceptions\DatabaseUpdateException;
 
@@ -56,8 +57,54 @@ it('wraps a failed download', function (): void {
         $this->fail('Expected a DatabaseUpdateException.');
     } catch (DatabaseUpdateException $e) {
         expect($e->getMessage())->toStartWith('Download failed')
-            ->and($e->getPrevious())->not->toBeNull();
+            ->and($e->getPrevious())->toBeNull();
     }
+});
+
+it('wraps a connection failure and never leaks the license key', function (): void {
+    Sleep::fake();
+    config()->set('geolocation.services.maxmind_database.license_key', 'MM-LICENSE-SECRET');
+    Http::fake(['download.maxmind.com/*' => failedConnection()]);
+
+    try {
+        app(UpdateDatabaseAction::class)->execute();
+        $this->fail('Expected a DatabaseUpdateException.');
+    } catch (DatabaseUpdateException $e) {
+        expect($e->getMessage())->toStartWith('Download failed')
+            ->not->toContain('MM-LICENSE-SECRET')
+            ->toContain('license_key=[redacted]')
+            // The transport exception quotes the full URL: it is not chained.
+            ->and($e->getPrevious())->toBeNull();
+    }
+});
+
+it('replaces the live database atomically instead of rewriting it in place', function (): void {
+    $path = storage_path('app/geolocation/Action-City.mmdb');
+    @mkdir(dirname($path), 0755, true);
+    file_put_contents($path, 'OLD-DB');
+    $inodeBefore = fileinode($path);
+    Http::fake(['download.maxmind.com/*' => Http::response(fakeMaxMindArchive('GeoLite2-City', 'NEW-DB'))]);
+
+    app(UpdateDatabaseAction::class)->execute();
+
+    clearstatcache();
+
+    // A rename swaps in a new file; an in-place write keeps the inode and lets a concurrent
+    // reader see a half-written database.
+    expect(file_get_contents($path))->toBe('NEW-DB')
+        ->and(fileinode($path))->not->toBe($inodeBefore)
+        ->and(glob(dirname($path).'/*.tmp*') ?: [])->toBe([]);
+});
+
+it('keeps the live database when the new archive cannot be unpacked', function (): void {
+    $path = storage_path('app/geolocation/Action-City.mmdb');
+    @mkdir(dirname($path), 0755, true);
+    file_put_contents($path, 'OLD-DB');
+    Http::fake(['download.maxmind.com/*' => Http::response(fakeMaxMindArchive('GeoLite2-City', 'readme', 'README.txt'))]);
+
+    expect(fn () => app(UpdateDatabaseAction::class)->execute())->toThrow(DatabaseUpdateException::class);
+
+    expect(file_get_contents($path))->toBe('OLD-DB');
 });
 
 it('wraps an archive that is not gzip', function (): void {
@@ -82,4 +129,39 @@ it('leaves no temporary archive behind', function (): void {
     }
 
     expect(glob(sys_get_temp_dir().'/mmdb*') ?: [])->toBe($before);
+});
+
+it('wraps a destination it cannot write and leaves nothing behind', function (): void {
+    $directory = sys_get_temp_dir().'/'.uniqid('mmro_', true);
+    mkdir($directory, 0755);
+    chmod($directory, 0555);
+    Http::fake(['download.maxmind.com/*' => Http::response(fakeMaxMindArchive('GeoLite2-City', 'NEW-DB'))]);
+
+    try {
+        expect(fn () => app(UpdateDatabaseAction::class)->execute(path: $directory.'/City.mmdb'))
+            ->toThrow(DatabaseUpdateException::class, 'Could not unpack the database');
+
+        expect(glob($directory.'/*') ?: [])->toBe([]);
+    } finally {
+        chmod($directory, 0755);
+        @rmdir($directory);
+    }
+});
+
+it('wraps a destination that cannot be replaced', function (): void {
+    $directory = sys_get_temp_dir().'/'.uniqid('mmdir_', true);
+    mkdir($directory.'/City.mmdb', 0755, true);
+    touch($directory.'/City.mmdb/keep');
+    Http::fake(['download.maxmind.com/*' => Http::response(fakeMaxMindArchive('GeoLite2-City', 'NEW-DB'))]);
+
+    try {
+        expect(fn () => app(UpdateDatabaseAction::class)->execute(path: $directory.'/City.mmdb'))
+            ->toThrow(DatabaseUpdateException::class, 'Could not unpack the database');
+
+        expect(glob($directory.'/*.tmp*') ?: [])->toBe([]);
+    } finally {
+        @unlink($directory.'/City.mmdb/keep');
+        @rmdir($directory.'/City.mmdb');
+        @rmdir($directory);
+    }
 });
