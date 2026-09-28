@@ -136,10 +136,13 @@ final class Decoder
         $size = ($control >> 3) & 0x03;
         $value = $control & 0x07;
 
+        // The spec joins the value bits with the following bytes FIRST and only then adds
+        // the size's base: `|` binds looser than `+` in PHP, so the parentheses matter —
+        // without them a carry out of `u + base` is swallowed by the OR.
         $pointer = match ($size) {
             0 => ($value << 8) | $this->byteAt($offset),
-            1 => ($value << 16) | $this->uint($offset, 2) + 2048,
-            2 => ($value << 24) | $this->uint($offset, 3) + 526336,
+            1 => (($value << 16) | $this->uint($offset, 2)) + 2048,
+            2 => (($value << 24) | $this->uint($offset, 3)) + 526336,
             default => $this->uint($offset, 4),
         };
 
@@ -192,7 +195,7 @@ final class Decoder
             return 0;
         }
 
-        if ($size === 8 && strlen($trimmed) <= 15) {
+        if ($size === 8 && (strlen($trimmed) < 16 || hexdec($trimmed[0]) < 8)) {
             return (int) hexdec($trimmed);
         }
 

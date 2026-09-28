@@ -43,6 +43,11 @@ it('decodes a uint64 within php int range', function (): void {
     expect(decodeBytes("\x08\x02\x00\x00\x00\x00\x00\x00\x00\x2a"))->toBe(42);
 });
 
+it('decodes a 16-hex-digit uint64 with the top bit clear as an int', function (): void {
+    // 0x1000000000000000 = 2^60 fits a signed 64-bit int (the decoder fixture's uint64 field).
+    expect(decodeBytes("\x08\x02\x10\x00\x00\x00\x00\x00\x00\x00"))->toBe(1152921504606846976);
+});
+
 it('decodes a large uint64 as a hex string', function (): void {
     $value = decodeBytes("\x08\x02\xff\xff\xff\xff\xff\xff\xff\xff");
 
@@ -169,6 +174,42 @@ it('decodes a 27-bit pointer with its offset', function (): void {
     [$value] = (new Decoder($buffer))->decode(0);
 
     expect($value)->toBe(7);
+});
+
+/**
+ * A buffer holding a pointer at offset 0 plus a short string at every listed offset. The
+ * carry cases below put the "right" answer where the spec says the pointer lands and a
+ * decoy where `(v << n) | (u + base)` — the operator-precedence slip — would land instead.
+ *
+ * @param  array<int, string>  $strings  offset => string
+ */
+function pointerBuffer(string $pointer, array $strings): string
+{
+    $buffer = str_repeat("\0", max(array_keys($strings)) + 32);
+    $buffer = substr_replace($buffer, $pointer, 0, strlen($pointer));
+
+    foreach ($strings as $offset => $string) {
+        $buffer = substr_replace($buffer, chr((2 << 5) | strlen($string)).$string, $offset, strlen($string) + 1);
+    }
+
+    return $buffer;
+}
+
+it('adds the size-1 pointer base after joining the value bits (carry into bit 16)', function (): void {
+    // control 001 01 001: pointer, size 1, v = 1; u = 0xF800. Spec: ((1 << 16) | 0xF800) + 2048.
+    $target = ((1 << 16) | 0xF800) + 2048;
+    $buffer = pointerBuffer("\x29\xF8\x00", [$target => 'RIGHT', (1 << 16) | (0xF800 + 2048) => 'WRONG']);
+
+    expect($target)->toBe(131072)
+        ->and(decodeBytes($buffer))->toBe('RIGHT');
+});
+
+it('adds the size-2 pointer base after joining the value bits (carry into bit 24)', function (): void {
+    // control 001 10 001: pointer, size 2, v = 1; u = 0xFFFFFF. Spec: ((1 << 24) | u) + 526336.
+    $target = ((1 << 24) | 0xFFFFFF) + 526336;
+    $buffer = pointerBuffer("\x31\xFF\xFF\xFF", [$target => 'RIGHT', (1 << 24) | (0xFFFFFF + 526336) => 'WRONG']);
+
+    expect(decodeBytes($buffer))->toBe('RIGHT');
 });
 
 it('decodes a 32-bit pointer', function (): void {

@@ -70,7 +70,7 @@ it('decodes every data type from the decoder database', function (): void {
         ->and($record['int32'])->toBe(-268435456)
         ->and($record['double'])->toBe(42.123456)
         ->and($record['map'])->toBeArray()
-        ->and($record['uint64'])->toBeString()
+        ->and($record['uint64'])->toBe(1152921504606846976)
         ->and($record['uint128'])->toBeString();
 });
 
