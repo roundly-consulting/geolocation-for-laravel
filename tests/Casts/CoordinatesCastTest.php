@@ -93,3 +93,21 @@ it('filters models within a radius scope', function () {
 
     expect($results)->toBe(['Near']);
 });
+
+it('finds rows across the antimeridian with the radius scope', function () {
+    Place::query()->create(['name' => 'Over the line', 'latitude' => 0.0, 'longitude' => -179.9]);
+    Place::query()->create(['name' => 'Far', 'latitude' => 0.0, 'longitude' => 0.0]);
+
+    $names = Place::query()->withinRadius(new Coordinates(0.0, 179.9), 50)->pluck('name')->all();
+
+    expect($names)->toBe(['Over the line']);
+});
+
+it('finds rows on the far side of a pole with the radius scope', function () {
+    Place::query()->create(['name' => 'Across the pole', 'latitude' => 89.9, 'longitude' => 180.0]);
+    Place::query()->create(['name' => 'Far', 'latitude' => 80.0, 'longitude' => 0.0]);
+
+    $names = Place::query()->withinRadius(new Coordinates(89.5, 0.0), 100)->pluck('name')->all();
+
+    expect($names)->toBe(['Across the pole']);
+});

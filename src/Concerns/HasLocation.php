@@ -30,8 +30,9 @@ trait HasLocation
 
     /**
      * Restrict the query to rows whose latitude/longitude fall inside the bounding box of
-     * the given radius (in kilometres) around a point. A cheap pre-filter — combine with an
-     * exact Haversine check in PHP for precise results.
+     * the given radius (in kilometres) around a point — wrapping across the antimeridian and
+     * spanning every longitude when the circle reaches a pole. A cheap pre-filter: combine
+     * with an exact Haversine check in PHP for precise results.
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
@@ -40,8 +41,14 @@ trait HasLocation
     {
         $box = $center->boundingBox($radiusKm);
 
-        return $query
-            ->whereBetween('latitude', [$box->southWest->latitude, $box->northEast->latitude])
-            ->whereBetween('longitude', [$box->southWest->longitude, $box->northEast->longitude]);
+        $query->whereBetween('latitude', [$box->southWest->latitude, $box->northEast->latitude]);
+
+        if ($box->crossesAntimeridian()) {
+            return $query->where(static fn (Builder $wrapped): Builder => $wrapped
+                ->where('longitude', '>=', $box->southWest->longitude)
+                ->orWhere('longitude', '<=', $box->northEast->longitude));
+        }
+
+        return $query->whereBetween('longitude', [$box->southWest->longitude, $box->northEast->longitude]);
     }
 }
