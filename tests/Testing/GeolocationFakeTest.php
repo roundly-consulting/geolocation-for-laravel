@@ -105,7 +105,7 @@ it('returns a seeded distance and an empty matrix', function () {
 it('ignores override calls on the fake', function () {
     $fake = Geolocation::fake(['1.1.1.1' => fakeLocation()]);
 
-    $result = Geolocation::withToken('x')->withTimeout(1)->withConfig(['a' => 'b'])->locateIp('1.1.1.1');
+    $result = Geolocation::withToken('ipinfo', 'x')->withTimeout(1)->withConfig('ipinfo', ['a' => 'b'])->locateIp('1.1.1.1');
 
     expect($result)->toBeInstanceOf(Location::class);
 });

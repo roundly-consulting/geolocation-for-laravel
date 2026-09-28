@@ -27,6 +27,7 @@ use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\Exceptions\UnknownProviderException;
 use RoundlyConsulting\Geolocation\Providers\GoogleProvider;
 use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
+use SensitiveParameter;
 use Throwable;
 
 /**
@@ -57,11 +58,18 @@ class GeolocationManager
     private ?array $only = null;
 
     /**
-     * Call-time provider configuration overrides applied to this (scoped copy's) resolutions.
+     * Call-time overrides every provider sees in this (scoped copy's) resolutions.
      *
      * @var array<string, mixed>
      */
-    private array $overrides = [];
+    private array $sharedOverrides = [];
+
+    /**
+     * Call-time overrides only the named provider sees, keyed by provider name.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    private array $providerOverrides = [];
 
     public function __construct(
         protected readonly Container $container,
@@ -129,7 +137,7 @@ class GeolocationManager
     ): DistanceMatrix {
         return $this->scoped(function () use ($origins, $destinations, $type): DistanceMatrix {
             foreach ($this->providerNames() as $name) {
-                $provider = $this->resolveProvider($name);
+                $provider = $this->activate($name);
 
                 if ($provider instanceof GoogleProvider) {
                     return $provider->distanceMatrix($origins, $destinations, $type);
@@ -260,31 +268,43 @@ class GeolocationManager
     }
 
     /**
-     * A copy of this manager whose calls use this API token/key.
+     * A copy of this manager whose calls send this API token/key to the named provider — and
+     * only to it: a credential is vendor-specific, so every other provider keeps its own.
+     *
+     * @throws UnknownProviderException when no provider is registered under $provider
      */
-    public function withToken(#[\SensitiveParameter] string $token): self
+    public function withToken(string $provider, #[SensitiveParameter] string $token): self
     {
-        return $this->withConfig(['token' => $token]);
+        return $this->withConfig($provider, ['token' => $token]);
     }
 
     /**
-     * A copy of this manager whose calls use this HTTP timeout (seconds).
+     * A copy of this manager whose calls use this HTTP timeout (seconds) for every provider.
      */
     public function withTimeout(int $seconds): self
     {
-        return $this->withConfig(['timeout' => $seconds]);
+        $scoped = clone $this;
+        $scoped->sharedOverrides['timeout'] = $seconds;
+
+        return $scoped;
     }
 
     /**
-     * A copy of this manager whose calls apply these provider config overrides, without
-     * mutating global config.
+     * A copy of this manager whose calls apply these config overrides to the named provider
+     * only, without mutating global config.
      *
      * @param  array<string, mixed>  $overrides
+     *
+     * @throws UnknownProviderException when no provider is registered under $provider
      */
-    public function withConfig(array $overrides): self
+    public function withConfig(string $provider, array $overrides): self
     {
+        if (! isset($this->extensions[$provider]) && ! array_key_exists($provider, $this->configuredProviders())) {
+            throw UnknownProviderException::named($provider);
+        }
+
         $scoped = clone $this;
-        $scoped->overrides = array_merge($this->overrides, $overrides);
+        $scoped->providerOverrides[$provider] = array_merge($this->providerOverrides[$provider] ?? [], $overrides);
 
         return $scoped;
     }
@@ -300,7 +320,24 @@ class GeolocationManager
      */
     private function scoped(Closure $callback): mixed
     {
-        return $this->container->make(ProviderOverrides::class)->during($this->overrides, $callback);
+        return $this->overrides()->during($this->sharedOverrides, $this->providerOverrides, $callback);
+    }
+
+    /**
+     * Resolve a pipeline entry and make its scoped overrides the ones its provider reads.
+     */
+    private function activate(string $name): object
+    {
+        $provider = $this->resolveProvider($name);
+
+        $this->overrides()->activate($name);
+
+        return $provider;
+    }
+
+    private function overrides(): ProviderOverrides
+    {
+        return $this->container->make(ProviderOverrides::class);
     }
 
     /**
@@ -316,7 +353,7 @@ class GeolocationManager
 
         foreach ($this->providerNames() as $name) {
             try {
-                $provider = $this->resolveProvider($name);
+                $provider = $this->activate($name);
 
                 if (! $provider instanceof GeolocationProvider) {
                     continue;
@@ -348,7 +385,7 @@ class GeolocationManager
     private function resolveDistance(DistanceQuery $query): ?Distance
     {
         foreach ($this->providerNames() as $name) {
-            $provider = $this->resolveProvider($name);
+            $provider = $this->activate($name);
 
             if (! $provider instanceof DistanceProvider) {
                 continue;
@@ -453,7 +490,8 @@ class GeolocationManager
     private function cacheEnabled(): bool
     {
         return $this->only === null
-            && $this->overrides === []
+            && $this->sharedOverrides === []
+            && $this->providerOverrides === []
             && (bool) config('geolocation.cache.enabled', false);
     }
 

@@ -61,7 +61,7 @@ it('passes a call-time token override to the provider', function () {
         'ipinfo.io/*' => Http::response(['city' => 'Tokened', 'country' => 'US', 'loc' => '1,2']),
     ]);
 
-    Geolocation::withToken('runtime-token')->locateIp('8.8.8.8');
+    Geolocation::withToken('ipinfo', 'runtime-token')->locateIp('8.8.8.8');
 
     Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer runtime-token'));
 });
@@ -71,7 +71,7 @@ it('clears overrides after a resolution', function () {
         'ipinfo.io/*' => Http::response(['city' => 'X', 'country' => 'US', 'loc' => '1,2']),
     ]);
 
-    Geolocation::withToken('once')->locateIp('8.8.8.8');
+    Geolocation::withToken('ipinfo', 'once')->locateIp('8.8.8.8');
     Geolocation::locateIp('8.8.8.8');
 
     Http::assertSentCount(2);
@@ -97,7 +97,7 @@ it('applies a timeout and arbitrary config override for one resolution', functio
 
     $manager = app(GeolocationManager::class);
 
-    expect($manager->withTimeout(11)->withConfig(['token' => 'cfg-token'])->locateIp('8.8.8.8'))
+    expect($manager->withTimeout(11)->withConfig('ipinfo', ['token' => 'cfg-token'])->locateIp('8.8.8.8'))
         ->not->toBeNull();
 
     Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer cfg-token'));

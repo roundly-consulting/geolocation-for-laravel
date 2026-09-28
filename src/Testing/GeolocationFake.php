@@ -15,6 +15,7 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\GeolocationManager;
+use SensitiveParameter;
 
 /**
  * A recording, network-free stand-in for the manager, installed by `Geolocation::fake()`.
@@ -200,7 +201,7 @@ final class GeolocationFake extends GeolocationManager
         return $this;
     }
 
-    public function withToken(#[\SensitiveParameter] string $token): GeolocationManager
+    public function withToken(string $provider, #[SensitiveParameter] string $token): GeolocationManager
     {
         return $this;
     }
@@ -213,7 +214,7 @@ final class GeolocationFake extends GeolocationManager
     /**
      * @param  array<string, mixed>  $overrides
      */
-    public function withConfig(array $overrides): GeolocationManager
+    public function withConfig(string $provider, array $overrides): GeolocationManager
     {
         return $this;
     }
