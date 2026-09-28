@@ -24,8 +24,9 @@ Initial public release.
 - A `HasLocation` trait and `CoordinatesCast` to store coordinates on a model, with a
   `withinRadius()` query scope.
 - A coordinates validation rule (`Rule::coordinates()`) and a `$request->location()` macro.
-- Per-call provider selection (`using()`, `provider()`) and overrides (`withToken()`,
-  `withTimeout()`, `withConfig()`), plus custom providers via `Geolocation::extend()`.
+- Per-call provider selection (`using()`, `provider()`) and overrides (`withToken($provider, $token)`,
+  `withTimeout()`, `withConfig($provider, $overrides)`), each returning a scoped copy of the
+  manager, plus custom providers via `Geolocation::extend()`.
 - Result caching and events (`LocationResolved`, `DistanceResolved`, `LocationResolutionFailed`).
 - Outbound provider calls paced by http-client-rate-limits-for-laravel, with `Retry-After`
   backoff.
@@ -39,11 +40,34 @@ Initial public release.
   invalidates them all on any cache store (cache keys now carry a generation number).
 - `Geolocation::fake()` — a real static on the facade returning `Testing\GeolocationFake`, a
   subtype of `GeolocationManager` installed behind the facade and in the container. Asserts:
-  `assertLocated`/`assertNothingLocated`, `assertProviderUsed`,
+  `assertLocated`/`assertNothingLocated`, `assertProviderUsed`/`assertProviderNotUsed`,
   `assertDistanceRequested`/`assertNoDistanceRequested`,
   `assertDatabaseUpdated`/`assertDatabaseNotUpdated`, `assertForgotten`/`assertNothingForgotten`,
   `assertCacheFlushed`/`assertCacheNotFlushed`.
 - The `Geolocation` global alias is declared in `composer.json` (`extra.laravel.aliases`).
+
+### Fixed
+
+- An unreachable provider API (timeout, DNS failure, refused connection) no longer aborts a
+  lookup: it throws a redacted `ProviderUnavailableException` that the pipeline skips, and
+  `LocationResolutionFailed` now carries the failing provider and error.
+- API keys and the MaxMind license key never appear in exception messages; `geolocation:db:update`
+  turns connection failures into `DatabaseUpdateException` and swaps the new database in with an
+  atomic rename.
+- `provider()` / `using()` / `with*()` scope a copy of the manager, so a scope or override never
+  leaks into later calls (even after a provider throws) and applies to every IP of a `batch()`.
+- `withToken()` / `withConfig()` target one provider, so a credential never reaches another
+  vendor.
+- The `default` provider answers `null` until a default location is configured, and a default
+  fallback is never cached.
+- MaxMind size-1 and size-2 data pointers decode correctly (operator precedence), and a uint64
+  with its top bit clear decodes as an int.
+- The `.mmdb` file is read once per process (reloaded when it changes on disk), not per lookup.
+- `midpointTo()`, `boundingBox()`, `within()` and `withinRadius()` handle the antimeridian and
+  the poles.
+- Coordinates are sent to Google as plain decimals, never in scientific notation.
+- The fake records every provider named in `using()`, for lookups, batches, distances and
+  matrices.
 
 ### Changed
 
