@@ -8,6 +8,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use RoundlyConsulting\Geolocation\Concerns\HasProviderOverrides;
 use RoundlyConsulting\Geolocation\Concerns\InteractsWithRateLimits;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
@@ -17,10 +18,13 @@ use RoundlyConsulting\Geolocation\GeolocationProvider;
 
 /**
  * Resolves a location through the MaxMind GeoIP2 Precision web service using HTTP Basic
- * auth (account ID + license key) over Laravel's HTTP client.
+ * auth (account ID + license key) over Laravel's HTTP client. A per-call `token` override
+ * (`withToken('maxmind_web', …)`) replaces the license key; the account ID stays the
+ * configured one.
  */
 final class MaxMindWebServiceProvider implements GeolocationProvider
 {
+    use HasProviderOverrides;
     use InteractsWithRateLimits;
 
     public function locate(GeolocationQuery $query): ?Location
@@ -38,9 +42,7 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
         try {
             $response = $this->throttled('maxmind_web', fn (): Response => $this->client()->get("/{$service}/{$query->ipAddress}"));
         } catch (ConnectionException $e) {
-            throw ProviderUnavailableException::for('maxmind_web', $e, [
-                config('geolocation.services.maxmind_web.license_key'),
-            ]);
+            throw ProviderUnavailableException::for('maxmind_web', $e, [$this->licenseKey()]);
         }
 
         if (! $response->successful()) {
@@ -65,14 +67,22 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
         return in_array($service, ['city', 'country', 'insights'], true) ? $service : 'city';
     }
 
+    private function licenseKey(): string
+    {
+        $override = $this->override('token');
+
+        return is_string($override) && $override !== ''
+            ? $override
+            : (string) config('geolocation.services.maxmind_web.license_key');
+    }
+
     private function client(): PendingRequest
     {
+        $timeout = $this->override('timeout');
+
         return Http::baseUrl(rtrim((string) config('geolocation.services.maxmind_web.base_url'), '/'))
-            ->withBasicAuth(
-                (string) config('geolocation.services.maxmind_web.account_id'),
-                (string) config('geolocation.services.maxmind_web.license_key'),
-            )
-            ->timeout((int) config('geolocation.timeout', 5))
+            ->withBasicAuth((string) config('geolocation.services.maxmind_web.account_id'), $this->licenseKey())
+            ->timeout($timeout !== null ? (int) $timeout : (int) config('geolocation.timeout', 5))
             ->retry(
                 (int) config('geolocation.services.maxmind_web.retry', 2),
                 (int) config('geolocation.services.maxmind_web.retry_delay', 100),
