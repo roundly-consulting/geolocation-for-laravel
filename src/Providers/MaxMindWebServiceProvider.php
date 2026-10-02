@@ -15,6 +15,7 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * Resolves a location through the MaxMind GeoIP2 Precision web service using HTTP Basic
@@ -29,7 +30,7 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
 
     public function locate(GeolocationQuery $query): ?Location
     {
-        if (! (bool) config('geolocation.services.maxmind_web.enabled', false)) {
+        if (! Config::boolean('geolocation.services.maxmind_web.enabled')) {
             return null;
         }
 

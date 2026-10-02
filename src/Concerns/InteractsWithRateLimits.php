@@ -12,6 +12,7 @@ use RoundlyConsulting\HttpClientRateLimits\Exceptions\RateLimitExceededException
 use RoundlyConsulting\HttpClientRateLimits\Facades\RateLimits;
 use RoundlyConsulting\HttpClientRateLimits\Limit;
 use RoundlyConsulting\HttpClientRateLimits\RateLimit;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * Client-side outbound rate limiting for the HTTP-backed geolocation providers.
@@ -37,7 +38,7 @@ trait InteractsWithRateLimits
         /** @var array<string, mixed> $config */
         $config = config("geolocation.services.{$provider}.rate_limits", []);
 
-        if (($config['enabled'] ?? true) === false) {
+        if (! Config::boolean("geolocation.services.{$provider}.rate_limits.enabled", true)) {
             return null;
         }
 
@@ -49,7 +50,7 @@ trait InteractsWithRateLimits
             timespan: $timespan,
         ))->by("geolocation:{$provider}:{$owner}");
 
-        if (($config['adaptive'] ?? true) === true) {
+        if (Config::boolean("geolocation.services.{$provider}.rate_limits.adaptive", true)) {
             $rateLimit->adaptive();
         }
 

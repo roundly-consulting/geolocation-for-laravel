@@ -12,6 +12,7 @@ use RoundlyConsulting\Geolocation\Support\RequestMacro;
 use RoundlyConsulting\Geolocation\Support\ValidationRules;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 final class GeolocationServiceProvider extends PackageServiceProvider
 {
@@ -31,8 +32,8 @@ final class GeolocationServiceProvider extends PackageServiceProvider
                     'Pipeline' => is_array($pipeline) && $pipeline !== []
                         ? implode(', ', array_map(strval(...), $pipeline))
                         : 'NONE',
-                    'Cache' => config('geolocation.cache.enabled') === true ? 'ENABLED' : 'OFF',
-                    'Events' => config('geolocation.events.enabled') === true ? 'ENABLED' : 'OFF',
+                    'Cache' => Config::boolean('geolocation.cache.enabled') ? 'ENABLED' : 'OFF',
+                    'Events' => Config::boolean('geolocation.events.enabled', true) ? 'ENABLED' : 'OFF',
                 ];
             });
     }

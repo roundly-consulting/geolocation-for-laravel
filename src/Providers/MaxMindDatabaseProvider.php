@@ -11,6 +11,7 @@ use RoundlyConsulting\Geolocation\Exceptions\DatabaseNotFoundException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 use RoundlyConsulting\Geolocation\MaxMind\Reader;
 use RoundlyConsulting\Geolocation\MaxMind\ReaderCache;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * Resolves a location from a local MaxMind .mmdb file using a native binary reader
@@ -25,7 +26,7 @@ final class MaxMindDatabaseProvider implements GeolocationProvider
 
     public function locate(GeolocationQuery $query): ?Location
     {
-        if (! (bool) config('geolocation.services.maxmind_database.enabled', false)) {
+        if (! Config::boolean('geolocation.services.maxmind_database.enabled')) {
             return null;
         }
 

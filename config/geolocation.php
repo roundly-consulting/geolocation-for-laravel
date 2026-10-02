@@ -71,7 +71,7 @@ return [
     */
 
     'cache' => [
-        'enabled' => (bool) env('GEOLOCATION_CACHE', false),
+        'enabled' => env('GEOLOCATION_CACHE', false),
         'store' => env('GEOLOCATION_CACHE_STORE'),
         'ttl' => (int) env('GEOLOCATION_CACHE_TTL', 86400),
         'prefix' => env('GEOLOCATION_CACHE_PREFIX', 'geolocation'),
@@ -88,7 +88,7 @@ return [
     */
 
     'events' => [
-        'enabled' => (bool) env('GEOLOCATION_EVENTS', true),
+        'enabled' => env('GEOLOCATION_EVENTS', true),
     ],
 
     /*
@@ -143,11 +143,11 @@ return [
             'retry' => env('IPINFO_RETRY_TIMES', 3),
             'retry_delay' => env('IPINFO_RETRY_DELAY_MS', 100),
             'rate_limits' => [
-                'enabled' => (bool) env('GEOLOCATION_IPINFO_RATELIMIT_ENABLED', true),
+                'enabled' => env('GEOLOCATION_IPINFO_RATELIMIT_ENABLED', true),
                 'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
                 'limit' => (int) env('GEOLOCATION_IPINFO_RATELIMIT', 60),
                 'per' => env('GEOLOCATION_IPINFO_RATELIMIT_PER', 'minute'), // second|minute|hour|day
-                'adaptive' => (bool) env('GEOLOCATION_IPINFO_RATELIMIT_ADAPTIVE', true),
+                'adaptive' => env('GEOLOCATION_IPINFO_RATELIMIT_ADAPTIVE', true),
                 'max_wait' => env('GEOLOCATION_IPINFO_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
                 'jitter' => env('GEOLOCATION_IPINFO_RATELIMIT_JITTER'), // ms; null = none
             ],
@@ -159,11 +159,11 @@ return [
             'retry' => env('GOOGLE_MAPS_RETRY_TIMES', 3),
             'retry_delay' => env('GOOGLE_MAPS_RETRY_DELAY_MS', 100),
             'rate_limits' => [
-                'enabled' => (bool) env('GEOLOCATION_GOOGLE_RATELIMIT_ENABLED', true),
+                'enabled' => env('GEOLOCATION_GOOGLE_RATELIMIT_ENABLED', true),
                 'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
                 'limit' => (int) env('GEOLOCATION_GOOGLE_RATELIMIT', 50),
                 'per' => env('GEOLOCATION_GOOGLE_RATELIMIT_PER', 'second'), // second|minute|hour|day
-                'adaptive' => (bool) env('GEOLOCATION_GOOGLE_RATELIMIT_ADAPTIVE', true),
+                'adaptive' => env('GEOLOCATION_GOOGLE_RATELIMIT_ADAPTIVE', true),
                 'max_wait' => env('GEOLOCATION_GOOGLE_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
                 'jitter' => env('GEOLOCATION_GOOGLE_RATELIMIT_JITTER'), // ms; null = none
             ],
@@ -175,18 +175,18 @@ return [
             'retry' => (int) env('IP2LOCATION_RETRY_TIMES', 2),
             'retry_delay' => (int) env('IP2LOCATION_RETRY_DELAY_MS', 100),
             'rate_limits' => [
-                'enabled' => (bool) env('GEOLOCATION_IP2LOCATION_RATELIMIT_ENABLED', true),
+                'enabled' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_ENABLED', true),
                 'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
                 'limit' => (int) env('GEOLOCATION_IP2LOCATION_RATELIMIT', 60),
                 'per' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_PER', 'minute'), // second|minute|hour|day
-                'adaptive' => (bool) env('GEOLOCATION_IP2LOCATION_RATELIMIT_ADAPTIVE', true),
+                'adaptive' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_ADAPTIVE', true),
                 'max_wait' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
                 'jitter' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_JITTER'), // ms; null = none
             ],
         ],
 
         'maxmind_web' => [
-            'enabled' => (bool) env('MAXMIND_WEB_ENABLED', false),
+            'enabled' => env('MAXMIND_WEB_ENABLED', false),
             'base_url' => env('MAXMIND_WEB_URL', 'https://geoip.maxmind.com/geoip/v2.1'),
             'account_id' => env('MAXMIND_ACCOUNT_ID'),
             'license_key' => env('MAXMIND_LICENSE_KEY'),
@@ -194,18 +194,18 @@ return [
             'retry' => (int) env('MAXMIND_WEB_RETRY_TIMES', 2),
             'retry_delay' => (int) env('MAXMIND_WEB_RETRY_DELAY_MS', 100),
             'rate_limits' => [
-                'enabled' => (bool) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ENABLED', true),
+                'enabled' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ENABLED', true),
                 'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
                 'limit' => (int) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT', 60),
                 'per' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_PER', 'minute'), // second|minute|hour|day
-                'adaptive' => (bool) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ADAPTIVE', true),
+                'adaptive' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ADAPTIVE', true),
                 'max_wait' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
                 'jitter' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_JITTER'), // ms; null = none
             ],
         ],
 
         'maxmind_database' => [
-            'enabled' => (bool) env('MAXMIND_DB_ENABLED', false),
+            'enabled' => env('MAXMIND_DB_ENABLED', false),
             'path' => env('MAXMIND_DB_PATH', storage_path('app/geolocation/GeoLite2-City.mmdb')),
 
             // Used by the geolocation:db:update command to download the .mmdb file.

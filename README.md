@@ -641,7 +641,9 @@ layer, not a replacement.
 
 ## Configuration
 
-Published to `config/geolocation.php`. Every key:
+Published to `config/geolocation.php`. Every `bool` switch accepts `true`/`false`, `1`/`0`,
+`on`/`off` or `yes`/`no`, from `.env` or the published file; an unrecognised value falls back
+to the default. Every key:
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|

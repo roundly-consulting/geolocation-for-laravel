@@ -28,6 +28,7 @@ use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\Exceptions\UnknownProviderException;
 use RoundlyConsulting\Geolocation\Providers\GoogleProvider;
 use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 use SensitiveParameter;
 use Throwable;
 
@@ -487,7 +488,7 @@ class GeolocationManager
 
     private function dispatch(object $event): void
     {
-        if ((bool) config('geolocation.events.enabled', true)) {
+        if (Config::boolean('geolocation.events.enabled', true)) {
             Event::dispatch($event);
         }
     }
@@ -497,7 +498,7 @@ class GeolocationManager
         return $this->only === null
             && $this->sharedOverrides === []
             && $this->providerOverrides === []
-            && (bool) config('geolocation.cache.enabled', false);
+            && Config::boolean('geolocation.cache.enabled');
     }
 
     private function cache(): Repository
