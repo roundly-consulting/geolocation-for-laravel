@@ -80,3 +80,14 @@ it('serializes to an array and json with the new fields', function () {
     ])->and($location->jsonSerialize())->toBe($location->toArray())
         ->and(json_decode((string) json_encode($location), true)['region'])->toBe('Region');
 });
+
+it('is empty only when it places nothing', function (Location $location, bool $empty): void {
+    expect($location->isEmpty())->toBe($empty);
+})->with([
+    'nothing at all' => [new Location('', '', '', '', 0.0, 0.0, GeolocationType::Ip, timezone: 'UTC'), true],
+    'whitespace only' => [new Location(' ', '', '', '', 0.0, 0.0, GeolocationType::Ip), true],
+    'a country' => [new Location('', '', '', 'SK', 0.0, 0.0, GeolocationType::Ip), false],
+    'a region' => [new Location('', '', '', '', 0.0, 0.0, GeolocationType::Ip, region: 'Bratislava'), false],
+    'a postal code' => [new Location('', '', '', '', 0.0, 0.0, GeolocationType::Ip, postalCode: '811 01'), false],
+    'coordinates' => [new Location('', '', '', '', 0.0, 17.1, GeolocationType::Ip), false],
+]);

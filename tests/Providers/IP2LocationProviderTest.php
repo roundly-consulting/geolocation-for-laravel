@@ -73,3 +73,18 @@ it('sends the configured api key as a query parameter', function () {
 
     Http::assertSent(fn ($request) => str_contains($request->url(), 'key=my-key'));
 });
+
+it('answers null when the api has no data for the ip', function (array $body): void {
+    Http::fake(['api.ip2location.io*' => Http::response($body)]);
+
+    expect((new IP2LocationProvider)->locate(new GeolocationQuery('10.0.0.1')))->toBeNull();
+})->with([
+    'nulls (the live api, private ip)' => [[
+        'ip' => '10.0.0.1', 'country_code' => null, 'region_name' => null, 'city_name' => null,
+        'latitude' => null, 'longitude' => null, 'zip_code' => null, 'time_zone' => null,
+    ]],
+    'dash placeholders' => [[
+        'ip' => '10.0.0.1', 'country_code' => '-', 'region_name' => '-', 'city_name' => '-',
+        'latitude' => 0, 'longitude' => 0, 'zip_code' => '-', 'time_zone' => '-',
+    ]],
+]);

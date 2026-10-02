@@ -344,10 +344,10 @@ class GeolocationManager
     }
 
     /**
-     * Walk the pipeline until a provider answers. A provider whose API is unreachable
-     * (ProviderUnavailableException) is skipped; any other exception aborts the lookup.
-     * Either way a lookup that ends without a location dispatches LocationResolutionFailed,
-     * naming the provider that failed last and its (redacted) error.
+     * Walk the pipeline until a provider answers with a non-empty Location. A provider whose
+     * API is unreachable (ProviderUnavailableException) is skipped; any other exception
+     * aborts the lookup. Either way a lookup that ends without a location dispatches
+     * LocationResolutionFailed, naming the provider that failed last and its (redacted) error.
      */
     private function resolveLocation(GeolocationQuery $query): ?Location
     {
@@ -373,7 +373,9 @@ class GeolocationManager
                 throw $e;
             }
 
-            if ($location instanceof Location) {
+            // An empty Location (e.g. an IP API's all-null answer for a private IP) is a miss:
+            // returning it would hand callers a "located" result they cannot tell from a real one.
+            if ($location instanceof Location && ! $location->isEmpty()) {
                 $this->dispatch(new LocationResolved($query, $location, $name));
 
                 return $location;

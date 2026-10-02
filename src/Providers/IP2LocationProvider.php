@@ -52,7 +52,10 @@ final class IP2LocationProvider implements GeolocationProvider
             return null;
         }
 
-        return $this->toLocation($body);
+        $location = $this->toLocation($body);
+
+        // A private or reserved IP gets HTTP 200 with every field null: no answer, not a place.
+        return $location->isEmpty() ? null : $location;
     }
 
     /**
@@ -60,22 +63,35 @@ final class IP2LocationProvider implements GeolocationProvider
      */
     private function toLocation(array $body): Location
     {
-        $city = isset($body['city_name']) ? (string) $body['city_name'] : '';
-        $region = isset($body['region_name']) ? (string) $body['region_name'] : '';
-        $country = isset($body['country_code']) ? (string) $body['country_code'] : '';
+        $city = $this->field($body, 'city_name');
+        $region = $this->field($body, 'region_name');
+        $country = $this->field($body, 'country_code');
 
         return new Location(
             humanReadable: $this->humanReadable($city, $region, $country),
             street: '',
             city: $city,
             countryIsoCode: $country,
-            latitude: isset($body['latitude']) ? (float) $body['latitude'] : 0.0,
-            longitude: isset($body['longitude']) ? (float) $body['longitude'] : 0.0,
+            latitude: is_numeric($body['latitude'] ?? null) ? (float) $body['latitude'] : 0.0,
+            longitude: is_numeric($body['longitude'] ?? null) ? (float) $body['longitude'] : 0.0,
             type: GeolocationType::Ip,
             region: $region,
-            postalCode: isset($body['zip_code']) ? (string) $body['zip_code'] : '',
-            timezone: isset($body['time_zone']) ? (string) $body['time_zone'] : '',
+            postalCode: $this->field($body, 'zip_code'),
+            timezone: $this->field($body, 'time_zone'),
         );
+    }
+
+    /**
+     * A text field, with IP2Location's "no data" markers (null, or "-" in its database
+     * format) read as empty.
+     *
+     * @param  array<string, mixed>  $body
+     */
+    private function field(array $body, string $key): string
+    {
+        $value = $body[$key] ?? null;
+
+        return is_scalar($value) && (string) $value !== '-' ? (string) $value : '';
     }
 
     private function humanReadable(string $city, string $region, string $country): string

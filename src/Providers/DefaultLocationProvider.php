@@ -24,13 +24,6 @@ final class DefaultLocationProvider implements GeolocationProvider
 
         $location = Location::createFromDefaults($config);
 
-        return $this->isConfigured($location) ? $location : null;
-    }
-
-    private function isConfigured(Location $location): bool
-    {
-        return trim($location->humanReadable.$location->street.$location->city.$location->countryIsoCode) !== ''
-            || $location->latitude !== 0.0
-            || $location->longitude !== 0.0;
+        return $location->isEmpty() ? null : $location;
     }
 }

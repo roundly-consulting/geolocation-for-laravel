@@ -48,6 +48,18 @@ final readonly class Location implements Arrayable, JsonSerializable
     }
 
     /**
+     * Whether this places nothing at all: no address part, no country and 0,0 coordinates
+     * (a timezone alone does not count). The manager treats such an answer as a miss, so a
+     * lookup never returns one.
+     */
+    public function isEmpty(): bool
+    {
+        return trim($this->humanReadable.$this->street.$this->city.$this->region.$this->postalCode.$this->countryIsoCode) === ''
+            && $this->latitude === 0.0
+            && $this->longitude === 0.0;
+    }
+
+    /**
      * @return array{humanReadable: string, street: string, city: string, region: string, postalCode: string, countryIsoCode: string, latitude: float, longitude: float, timezone: string, type: string}
      */
     public function toArray(): array
