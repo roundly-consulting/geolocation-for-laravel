@@ -14,6 +14,7 @@ use PharFileInfo;
 use RecursiveIteratorIterator;
 use RoundlyConsulting\Geolocation\Exceptions\DatabaseUpdateException;
 use RuntimeException;
+use SensitiveParameter;
 use Throwable;
 
 /**
@@ -94,7 +95,7 @@ final readonly class UpdateDatabaseAction
     /**
      * Download the .tar.gz archive to a temporary file and return its path.
      */
-    private function download(string $edition, #[\SensitiveParameter] string $licenseKey): string
+    private function download(string $edition, #[SensitiveParameter] string $licenseKey): string
     {
         $baseUrl = (string) $this->config->get(
             'geolocation.services.maxmind_database.download_url',
