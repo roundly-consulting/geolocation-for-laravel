@@ -68,6 +68,10 @@ Initial public release.
 - Coordinates are sent to Google as plain decimals, never in scientific notation.
 - The fake records every provider named in `using()`, for lookups, batches, distances and
   matrices.
+- An empty answer (no place, country or coordinates — what IP2Location returns for a private
+  IP) is a miss: the pipeline asks the next provider, and an IP nothing can place is `null`.
+  `Location::isEmpty()` tells such a value apart.
+- The MaxMind web service honours `withTimeout()` and a `withToken('maxmind_web', …)` license key.
 
 ### Changed
 

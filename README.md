@@ -98,10 +98,14 @@ few errors still abort the lookup on purpose: a fail-fast `RateLimitExceededExce
 missing or corrupt MaxMind database, and any exception your own provider throws.
 
 **An unresolved lookup is `null`.** `locate*()`, `distance()` and `distanceBetween()` return
-`null` when no provider answers. The `default` provider only answers once you configure a
-default location (any `geolocation.default.*` value); with the shipped empty values it answers
-`null` as well. When it does answer, the `Location` has `type === GeolocationType::Default`, so
-you can tell a fallback from a real lookup.
+`null` when no provider answers. An empty answer counts as no answer: a `Location` with no
+address part, no country and `0,0` coordinates (`$location->isEmpty()`), such as IP2Location's
+reply for a private IP, is skipped and the next provider is asked. So a `Location` you get back
+always places something, though a coarse IP match can still lack a city or a country. The
+`default` provider only answers once you configure a default location (any
+`geolocation.default.*` value); with the shipped empty values it answers `null` as well. When it
+does answer, the `Location` has `type === GeolocationType::Default`, so you can tell a fallback
+from a real lookup.
 
 ### Bundled providers
 
@@ -343,8 +347,8 @@ $location = $request->location();        // resolves the client's Location from 
 
 ### Per-call provider overrides
 
-Tweak a provider's token, timeout or other settings for one call without touching global
-config. A token is vendor-specific, so `withToken()` and `withConfig()` name the provider they
+Tweak a provider's credential or timeout for one call without touching global config. A
+credential is vendor-specific, so `withToken()` and `withConfig()` name the provider they
 target. No other provider ever sees that value. `withTimeout()` applies to every provider:
 
 ```php
@@ -356,6 +360,13 @@ Geolocation::withConfig('ipinfo', ['token' => '…', 'timeout' => 3])->locateIp(
 Each call returns a scoped copy of the manager, so the override lasts exactly as long as the
 call chain it is attached to (every IP of a `batch()` included). Naming a provider that isn't
 registered throws `UnknownProviderException`.
+
+The bundled HTTP providers read two override keys. `token` replaces the IPinfo token, the
+Google or IP2Location key, or the MaxMind web license key (the account ID stays the configured
+one). `timeout` replaces `geolocation.timeout`. The offline `maxmind_database` and `default`
+providers read none. Your own provider can read any key passed to `withConfig()`: add the
+`RoundlyConsulting\Geolocation\Concerns\HasProviderOverrides` trait and call
+`$this->override('key')`, which returns `null` when the key isn't set for this call.
 
 The `GeolocationManager` is also `Macroable`, so host apps can add their own methods.
 
@@ -449,7 +460,8 @@ final class MyProvider implements GeolocationProvider
 {
     public function locate(GeolocationQuery $query): ?Location
     {
-        // Return a Location, or null to defer to the next provider.
+        // Return a Location, or null to defer to the next provider. An empty Location
+        // (`$location->isEmpty()`) defers too.
     }
 }
 ```
