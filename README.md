@@ -642,8 +642,9 @@ layer, not a replacement.
 ## Configuration
 
 Published to `config/geolocation.php`. Every `bool` switch accepts `true`/`false`, `1`/`0`,
-`on`/`off` or `yes`/`no`, from `.env` or the published file; an unrecognised value falls back
-to the default. Every key:
+`on`/`off` or `yes`/`no`, from `.env` or the published file; an unset one takes its default, and
+anything else (say `GEOLOCATION_CACHE=disabled`) throws package-toolkit's
+`InvalidConfigurationException` naming the key on the first lookup. Every key:
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
