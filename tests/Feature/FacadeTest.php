@@ -175,15 +175,12 @@ describe('cache', function (): void {
 
 describe('updateDatabase', function (): void {
     beforeEach(function (): void {
+        // A throwaway storage/ per test, never the shared testbench skeleton's.
+        $this->sandboxStorage();
+
         config()->set('geolocation.services.maxmind_database.license_key', 'key');
         config()->set('geolocation.services.maxmind_database.edition', 'GeoLite2-City');
         config()->set('geolocation.services.maxmind_database.path', storage_path('app/geolocation/Facade-City.mmdb'));
-    });
-
-    afterEach(function (): void {
-        foreach (['Facade-City.mmdb', 'Facade-Country.mmdb'] as $file) {
-            @unlink(storage_path("app/geolocation/{$file}"));
-        }
     });
 
     it('downloads the configured edition to the configured path', function (): void {
@@ -223,6 +220,7 @@ describe('updateDatabase', function (): void {
 it('serves the same API through an injected manager', function (): void {
     Http::fake(['download.maxmind.com/*' => Http::response(fakeMaxMindArchive('GeoLite2-City', 'DI-DB'))]);
     config()->set('geolocation.services.maxmind_database.license_key', 'key');
+    $this->sandboxStorage();
     $path = storage_path('app/geolocation/Di-City.mmdb');
 
     $manager = app(GeolocationManager::class);
@@ -231,6 +229,4 @@ it('serves the same API through an injected manager', function (): void {
         ->and($manager)->toBe(Geolocation::getFacadeRoot())
         ->and($manager->distanceBetween(new Coordinates(1.0, 2.0), new Coordinates(3.0, 4.0)))->toBeInstanceOf(Distance::class)
         ->and(file_get_contents($manager->updateDatabase(path: $path)))->toBe('DI-DB');
-
-    unlink($path);
 });

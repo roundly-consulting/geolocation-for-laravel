@@ -4,12 +4,8 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Http;
 
-afterEach(function () {
-    $path = storage_path('app/geolocation/GeoLite2-City.mmdb');
-    if (is_file($path)) {
-        unlink($path);
-    }
-});
+// A throwaway storage/ per test, never the shared testbench skeleton's.
+beforeEach(fn () => $this->sandboxStorage());
 
 it('fails without a license key', function () {
     config()->set('geolocation.services.maxmind_database.license_key', '');
@@ -44,8 +40,6 @@ it('downloads and writes the mmdb database', function () {
         ->assertExitCode(0);
 
     expect(file_get_contents($destination))->toBe('BINARY-DB');
-
-    unlink($destination);
 });
 
 it('reports a clear error when the download fails', function () {

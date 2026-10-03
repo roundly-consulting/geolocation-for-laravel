@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Geolocation\Tests;
 
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Geolocation\GeolocationServiceProvider;
@@ -12,6 +13,8 @@ use RoundlyConsulting\Testing\PackageTestCase;
 
 abstract class TestCase extends PackageTestCase
 {
+    private string $storageSandbox = '';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -19,6 +22,32 @@ abstract class TestCase extends PackageTestCase
         // Every lookup provider is driven through a faked HTTP client; a stray request
         // means a test is reaching a real geolocation API.
         Http::preventStrayRequests();
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->storageSandbox !== '') {
+            File::deleteDirectory($this->storageSandbox);
+            $this->storageSandbox = '';
+        }
+
+        parent::tearDown();
+    }
+
+    /**
+     * Point storage_path() at a throwaway directory for the rest of this test.
+     *
+     * The MaxMind database refresh writes into storage/app/geolocation. In the testbench
+     * skeleton that directory is shared by every parallel process, so one file's in-flight
+     * `.tmp` file could fail another file's "nothing temporary left behind" glob — and the
+     * directory outlived the suite. Configuration is already resolved by now, so this moves
+     * only the storage_path() calls the test makes from here on.
+     */
+    protected function sandboxStorage(): void
+    {
+        $this->storageSandbox = sys_get_temp_dir().'/geolocation-storage-'.bin2hex(random_bytes(6));
+
+        app()->useStoragePath($this->storageSandbox);
     }
 
     /**

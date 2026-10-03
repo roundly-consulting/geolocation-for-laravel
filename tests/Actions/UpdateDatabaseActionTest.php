@@ -6,15 +6,23 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use RoundlyConsulting\Geolocation\Actions\UpdateDatabaseAction;
 use RoundlyConsulting\Geolocation\Exceptions\DatabaseUpdateException;
+use RoundlyConsulting\Geolocation\Tests\TestCase;
 
 beforeEach(function (): void {
+    $this->sandboxStorage();
+
     config()->set('geolocation.services.maxmind_database.license_key', 'key');
     config()->set('geolocation.services.maxmind_database.edition', 'GeoLite2-City');
     config()->set('geolocation.services.maxmind_database.path', storage_path('app/geolocation/Action-City.mmdb'));
 });
 
-afterEach(function (): void {
-    @unlink(storage_path('app/geolocation/Action-City.mmdb'));
+/**
+ * The database lands in a throwaway storage/ per test ({@see TestCase::sandboxStorage()}),
+ * never the testbench skeleton's — where another process's in-flight `.tmp` would fail the
+ * "replaced atomically" glob below.
+ */
+it('writes into the sandbox, never the shared skeleton', function (): void {
+    expect(storage_path('app/geolocation'))->toContain('geolocation-storage-');
 });
 
 it('downloads, unpacks and writes the database, returning the path', function (): void {
