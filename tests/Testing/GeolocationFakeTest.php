@@ -215,6 +215,15 @@ it('records a database refresh without downloading anything', function () {
         ->and(fn () => $fake->assertDatabaseNotUpdated())->toThrow(AssertionFailedError::class);
 });
 
+it('records a blank configured edition as the default one, like the real refresh', function (string $blank): void {
+    config()->set('geolocation.services.maxmind_database.edition', $blank);
+    $fake = Geolocation::fake();
+
+    Geolocation::updateDatabase();
+
+    $fake->assertDatabaseUpdated('GeoLite2-City');
+})->with(['empty' => '', 'whitespace' => '  ']);
+
 it('records a database refresh made through the artisan command', function () {
     $fake = Geolocation::fake();
 

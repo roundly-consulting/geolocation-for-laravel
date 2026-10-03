@@ -9,9 +9,9 @@ use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
- * Strict reads of the host's non-boolean geolocation settings. An absent (null) value takes
- * the default; a present but invalid one throws {@see InvalidConfigurationException} naming
- * the key, so a typo never silently becomes a different setting (a timeout of `five` used
+ * Strict reads of the host's non-boolean geolocation settings. A value that is not set
+ * (absent, null or blank — `''` or whitespace, a host's `KEY=`) takes the default; any other
+ * invalid one throws {@see InvalidConfigurationException} naming the key, so a typo never silently becomes a different setting (a timeout of `five` used
  * to be cast to 0 — no timeout at all).
  *
  * The value-taking helpers validate a value the caller already read, so each call site
@@ -22,12 +22,13 @@ use RoundlyConsulting\PackageToolkit\Support\Config;
 final class GeolocationConfig
 {
     /**
-     * The HTTP timeout in seconds: a per-call `timeout` override when one is set, otherwise
-     * `geolocation.timeout`. Never below 1 — Laravel reads a timeout of 0 as "wait forever".
+     * The HTTP timeout in seconds: a per-call `timeout` override when one is set (a blank
+     * one is not), otherwise `geolocation.timeout`. Never below 1 — Laravel reads a timeout
+     * of 0 as "wait forever".
      */
     public static function timeout(mixed $override = null): int
     {
-        if ($override !== null) {
+        if (! self::isUnset($override)) {
             return self::integer('timeout override', $override, 5, min: 1);
         }
 
@@ -35,8 +36,8 @@ final class GeolocationConfig
     }
 
     /**
-     * An integer the caller read from config: the default when null, otherwise an int or a
-     * canonical integer string within the bounds.
+     * An integer the caller read from config: the default when not set (null or blank),
+     * otherwise an int or a canonical integer string within the bounds.
      */
     public static function integer(string $key, mixed $value, int $default, ?int $min = null, ?int $max = null): int
     {
@@ -44,24 +45,24 @@ final class GeolocationConfig
     }
 
     /**
-     * An optional integer: null stays null (the feature is off), anything else must be a
-     * canonical integer within the bounds.
+     * An optional integer: not set (null or blank) stays null — the feature is off — and
+     * anything else must be a canonical integer within the bounds.
      */
     public static function optionalInteger(string $key, mixed $value, ?int $min = null): ?int
     {
-        return $value === null ? null : self::integer($key, $value, 0, $min);
+        return self::isUnset($value) ? null : self::integer($key, $value, 0, $min);
     }
 
     /**
-     * A string setting: the default when null, otherwise a non-empty string.
+     * A string setting: the default when not set (null or blank), otherwise a string.
      */
     public static function string(string $key, mixed $value, string $default): string
     {
-        if ($value === null) {
+        if (self::isUnset($value)) {
             return $default;
         }
 
-        if (! is_string($value) || trim($value) === '') {
+        if (! is_string($value)) {
             throw InvalidConfigurationException::notAString($key, $value);
         }
 
@@ -69,12 +70,12 @@ final class GeolocationConfig
     }
 
     /**
-     * An optional string setting (a cache store): null stays null, anything else must be a
-     * non-empty string.
+     * An optional string setting (a cache store): not set (null or blank) is null — the
+     * default store — and anything else must be a string.
      */
     public static function optionalString(string $key, mixed $value): ?string
     {
-        return $value === null ? null : self::string($key, $value, '');
+        return self::isUnset($value) ? null : self::string($key, $value, '');
     }
 
     /**
@@ -98,13 +99,14 @@ final class GeolocationConfig
     }
 
     /**
-     * A coordinate: the default when null, otherwise an int, a float or a decimal string
-     * (env values are strings) within `[-$bound, $bound]`. `north`, `''`, `0x1A`, `1e3`
-     * and booleans throw — they used to be cast to 0, placing the default on Null Island.
+     * A coordinate: the shipped `0.0` when not set (null or blank), otherwise an int, a float
+     * or a decimal string (env values are strings) within `[-$bound, $bound]`. `north`,
+     * `0x1A`, `1e3` and booleans throw — they used to be cast to 0, placing the default on
+     * Null Island.
      */
     public static function coordinate(string $key, mixed $value, float $bound): float
     {
-        if ($value === null) {
+        if (self::isUnset($value)) {
             return 0.0;
         }
 
@@ -125,5 +127,11 @@ final class GeolocationConfig
         }
 
         return $number;
+    }
+
+    /** Not set: null, or a blank string (`''` or whitespace — a host's `KEY=`). */
+    private static function isUnset(mixed $value): bool
+    {
+        return $value === null || (is_string($value) && trim($value) === '');
     }
 }

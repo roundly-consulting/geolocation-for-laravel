@@ -17,6 +17,7 @@ use RoundlyConsulting\Geolocation\Providers\GoogleProvider;
 use RoundlyConsulting\Geolocation\Providers\IP2LocationProvider;
 use RoundlyConsulting\Geolocation\Providers\IpInfoProvider;
 use RoundlyConsulting\Geolocation\Providers\MaxMindWebServiceProvider;
+use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
 use RoundlyConsulting\Geolocation\Tests\FakeProviders\FakeGeolocationProvider;
 use RoundlyConsulting\HttpClientRateLimits\RateLimit;
 use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
@@ -24,7 +25,8 @@ use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 /**
  * A typo in the host's geolocation config fails loudly. The ones that mattered: a timeout
  * of `five` used to be cast to 0 — no timeout at all — and a `per` typo silently became a
- * per-second budget.
+ * per-second budget. A blank value (a host's `KEY=`) is not set: it takes the default, or
+ * leaves an optional setting off.
  */
 function strictLimiterFor(string $provider): ?RateLimit
 {
@@ -50,7 +52,6 @@ dataset('junk integers', [
     'word' => 'five',
     'decimal' => '5.5',
     'trailing junk' => '5abc',
-    'blank' => '',
     'exponent' => '1e3',
     'bool' => true,
 ]);
@@ -83,12 +84,24 @@ it('refuses a junk per-call timeout override (strict config)', function (mixed $
     Http::assertNothingSent();
 })->with(['five', 0, '0']);
 
-it('reads a canonical timeout string and defaults an absent one (strict config)', function (mixed $timeout): void {
+it('reads a canonical timeout string and defaults an absent or blank one (strict config)', function (mixed $timeout): void {
     config()->set('geolocation.timeout', $timeout);
     ipinfoAnswers();
 
     expect((new IpInfoProvider)->locate(new GeolocationQuery('8.8.8.8')))->toBeInstanceOf(Location::class);
-})->with([' 7 ', 7, null]);
+})->with([' 7 ', 7, null, '', '  ']);
+
+it('reads a blank timeout, or a blank per-call override, as not set (strict config)', function (): void {
+    config()->set('geolocation.timeout', '');
+
+    expect(GeolocationConfig::timeout())->toBe(5);
+
+    config()->set('geolocation.timeout', 9);
+
+    expect(GeolocationConfig::timeout(''))->toBe(9)
+        ->and(GeolocationConfig::timeout(' '))->toBe(9)
+        ->and(GeolocationConfig::timeout('3'))->toBe(3);
+});
 
 it('refuses a junk or negative retry on every http provider (strict config)', function (string $provider, mixed $value): void {
     config()->set("geolocation.services.{$provider}.retry", $value);
@@ -117,7 +130,7 @@ it('refuses a junk retry delay (strict config)', function (): void {
         ->toThrow(InvalidConfigurationException::class, 'geolocation.services.ipinfo.retry_delay');
 });
 
-it('refuses a blank or non-string provider base url (strict config)', function (string $provider, mixed $value): void {
+it('refuses a non-string provider base url (strict config)', function (string $provider, mixed $value): void {
     $key = $provider === 'maxmind_web' ? 'base_url' : 'url';
     config()->set("geolocation.services.{$provider}.{$key}", $value);
     config()->set('geolocation.services.maxmind_web.enabled', true);
@@ -133,14 +146,23 @@ it('refuses a blank or non-string provider base url (strict config)', function (
 
     expect(fn () => $instance->locate($query))
         ->toThrow(InvalidConfigurationException::class, "geolocation.services.{$provider}.{$key}");
-})->with(['ipinfo', 'google', 'ip2location', 'maxmind_web'])->with(['blank' => '', 'array' => [['https://ipinfo.io']]]);
+})->with(['ipinfo', 'google', 'ip2location', 'maxmind_web'])->with(['array' => [['https://ipinfo.io']], 'int' => 443]);
+
+it('reads a blank provider base url as not set, calling the default host (strict config)', function (string $blank): void {
+    config()->set('geolocation.services.ipinfo.url', $blank);
+    ipinfoAnswers();
+
+    expect((new IpInfoProvider)->locate(new GeolocationQuery('8.8.8.8')))->toBeInstanceOf(Location::class);
+
+    Http::assertSent(fn ($request): bool => str_starts_with((string) $request->url(), 'https://ipinfo.io/'));
+})->with(['empty' => '', 'whitespace' => '  ']);
 
 it('refuses a typo in the rate-limit window instead of pacing per second (strict config)', function (mixed $per): void {
     config()->set('geolocation.services.ipinfo.rate_limits.per', $per);
 
     expect(fn () => strictLimiterFor('ipinfo'))
         ->toThrow(InvalidConfigurationException::class, 'geolocation.services.ipinfo.rate_limits.per');
-})->with(['minuet', 'Minute', '', 60]);
+})->with(['minuet', 'Minute', 60]);
 
 it('reads the rate-limit window and limit strictly, defaulting when absent (strict config)', function (): void {
     config()->set('geolocation.services.google.rate_limits.per', 'hour');
@@ -152,6 +174,14 @@ it('reads the rate-limit window and limit strictly, defaulting when absent (stri
         ->and($limiter?->getMaxAttempts())->toBe(120);
 
     config()->set('geolocation.services.google.rate_limits', ['enabled' => true]);
+
+    $limiter = strictLimiterFor('google');
+
+    expect($limiter?->getTimespan())->toBe('second')
+        ->and($limiter?->getMaxAttempts())->toBe(60)
+        ->and($limiter?->getKey())->toBe('geolocation:google:app');
+
+    config()->set('geolocation.services.google.rate_limits', ['enabled' => true, 'per' => '', 'limit' => ' ', 'owner' => '']);
 
     $limiter = strictLimiterFor('google');
 
@@ -172,7 +202,15 @@ it('refuses a junk max_wait or jitter instead of ignoring it (strict config)', f
 
     expect(fn () => strictLimiterFor('ipinfo'))
         ->toThrow(InvalidConfigurationException::class, "geolocation.services.ipinfo.rate_limits.{$leaf}");
-})->with(['max_wait', 'jitter'])->with(['soon', '1.5', '', '-10']);
+})->with(['max_wait', 'jitter'])->with(['soon', '1.5', '-10']);
+
+it('reads a blank max_wait or jitter as not set, leaving it off (strict config)', function (string $blank): void {
+    config()->set('geolocation.services.ipinfo.rate_limits.max_wait', $blank);
+    config()->set('geolocation.services.ipinfo.rate_limits.jitter', $blank);
+
+    expect(GeolocationConfig::optionalInteger('geolocation.services.ipinfo.rate_limits.max_wait', $blank, min: 0))->toBeNull()
+        ->and(strictLimiterFor('ipinfo'))->toBeInstanceOf(RateLimit::class);
+})->with(['empty' => '', 'whitespace' => '  ']);
 
 it('accepts a canonical max_wait and jitter (strict config)', function (): void {
     config()->set('geolocation.services.ipinfo.rate_limits.max_wait', '250');
@@ -181,12 +219,12 @@ it('accepts a canonical max_wait and jitter (strict config)', function (): void 
     expect(strictLimiterFor('ipinfo'))->toBeInstanceOf(RateLimit::class);
 });
 
-it('refuses a blank or non-string rate-limit owner (strict config)', function (mixed $owner): void {
+it('refuses a non-string rate-limit owner (strict config)', function (mixed $owner): void {
     config()->set('geolocation.services.ipinfo.rate_limits.owner', $owner);
 
     expect(fn () => strictLimiterFor('ipinfo'))
         ->toThrow(InvalidConfigurationException::class, 'geolocation.services.ipinfo.rate_limits.owner');
-})->with(['blank' => '', 'spaces' => '  ', 'array' => [['app']]]);
+})->with(['array' => [['app']], 'int' => 7]);
 
 it('refuses an unknown maxmind web service instead of using city (strict config)', function (mixed $service): void {
     config()->set('geolocation.services.maxmind_web.enabled', true);
@@ -197,17 +235,17 @@ it('refuses an unknown maxmind web service instead of using city (strict config)
         ->toThrow(InvalidConfigurationException::class, 'geolocation.services.maxmind_web.service');
 
     Http::assertNothingSent();
-})->with(['cty', 'City', '']);
+})->with(['cty', 'City']);
 
-it('defaults an absent maxmind web service to city (strict config)', function (): void {
+it('defaults an absent or blank maxmind web service to city (strict config)', function (?string $unset): void {
     config()->set('geolocation.services.maxmind_web.enabled', true);
-    config()->set('geolocation.services.maxmind_web.service', null);
+    config()->set('geolocation.services.maxmind_web.service', $unset);
     Http::fake(['geoip.maxmind.com/*' => Http::response(['country' => ['iso_code' => 'US']])]);
 
     (new MaxMindWebServiceProvider)->locate(new GeolocationQuery('8.8.8.8'));
 
     Http::assertSent(fn ($request): bool => str_contains($request->url(), '/city/8.8.8.8'));
-});
+})->with(['absent' => null, 'empty' => '', 'whitespace' => ' ']);
 
 it('refuses a junk or zero cache ttl (strict config)', function (mixed $ttl): void {
     config()->set('geolocation.providers', ['fake' => FakeGeolocationProvider::class]);
@@ -219,7 +257,7 @@ it('refuses a junk or zero cache ttl (strict config)', function (mixed $ttl): vo
         ->toThrow(InvalidConfigurationException::class, 'geolocation.cache.ttl');
 })->with(['a day', '0', 0, '-60']);
 
-it('refuses a blank or non-string cache store or prefix (strict config)', function (string $key, mixed $value): void {
+it('refuses a non-string cache store or prefix (strict config)', function (string $key, mixed $value): void {
     config()->set('geolocation.providers', ['fake' => FakeGeolocationProvider::class]);
     config()->set('geolocation.pipeline', ['fake']);
     config()->set('geolocation.cache.enabled', true);
@@ -228,24 +266,22 @@ it('refuses a blank or non-string cache store or prefix (strict config)', functi
     expect(fn () => app(GeolocationManager::class)->locate(new GeolocationQuery('127.0.0.1')))
         ->toThrow(InvalidConfigurationException::class, $key);
 })->with([
-    'blank store' => ['geolocation.cache.store', ''],
     'array store' => ['geolocation.cache.store', ['array']],
-    'blank prefix' => ['geolocation.cache.prefix', ' '],
     'int prefix' => ['geolocation.cache.prefix', 5],
 ]);
 
-it('caches under the default store and prefix when both are absent (strict config)', function (): void {
+it('caches under the default store and prefix when both are absent or blank (strict config)', function (?string $unset): void {
     config()->set('geolocation.providers', ['fake' => FakeGeolocationProvider::class]);
     config()->set('geolocation.pipeline', ['fake']);
     config()->set('geolocation.cache.enabled', true);
-    config()->set('geolocation.cache.ttl', null);
-    config()->set('geolocation.cache.store', null);
-    config()->set('geolocation.cache.prefix', null);
+    config()->set('geolocation.cache.ttl', $unset);
+    config()->set('geolocation.cache.store', $unset);
+    config()->set('geolocation.cache.prefix', $unset);
 
     app(GeolocationManager::class)->locate(new GeolocationQuery('127.0.0.1'));
 
     expect(Cache::has('geolocation:v0:locate:'.(new GeolocationQuery('127.0.0.1'))->cacheKey()))->toBeTrue();
-});
+})->with(['absent' => null, 'empty' => '', 'whitespace' => ' ']);
 
 it('refuses a pipeline name that names no provider (strict config)', function (mixed $name): void {
     config()->set('geolocation.providers', ['fake' => FakeGeolocationProvider::class]);
@@ -289,12 +325,22 @@ it('refuses a junk or out-of-range default coordinate (strict config)', function
         ->toThrow(InvalidConfigurationException::class, "geolocation.default.{$key}");
 })->with([
     'word latitude' => ['latitude', 'north'],
-    'blank latitude' => ['latitude', ''],
     'latitude past the pole' => ['latitude', '91'],
     'longitude past the antimeridian' => ['longitude', -180.5],
     'hex longitude' => ['longitude', '0x1A'],
     'bool longitude' => ['longitude', true],
 ]);
+
+it('reads a blank default coordinate as not set, the shipped 0.0 (strict config)', function (string $blank): void {
+    config()->set('geolocation.default.city', 'Bratislava');
+    config()->set('geolocation.default.latitude', $blank);
+    config()->set('geolocation.default.longitude', $blank);
+
+    $location = (new DefaultLocationProvider)->locate(new GeolocationQuery('127.0.0.1'));
+
+    expect($location?->latitude)->toBe(0.0)
+        ->and($location?->longitude)->toBe(0.0);
+})->with(['empty' => '', 'whitespace' => '  ']);
 
 it('reads numeric default coordinates from env strings (strict config)', function (): void {
     config()->set('geolocation.default.city', 'Bratislava');
@@ -319,10 +365,10 @@ it('refuses a junk timeout before downloading the database (strict config)', fun
     Http::assertNothingSent();
 });
 
-it('refuses a blank database edition or download url (strict config)', function (string $key): void {
+it('refuses a non-string database edition or download url (strict config)', function (string $key): void {
     config()->set('geolocation.services.maxmind_database.license_key', 'key');
     config()->set('geolocation.services.maxmind_database.path', storage_path('app/geolocation/Strict-City.mmdb'));
-    config()->set("geolocation.services.maxmind_database.{$key}", '');
+    config()->set("geolocation.services.maxmind_database.{$key}", ['GeoLite2-City']);
     Http::fake();
 
     expect(fn () => app(UpdateDatabaseAction::class)->execute())
