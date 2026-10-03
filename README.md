@@ -607,12 +607,12 @@ Per-provider `rate_limits` keys (shown for `google`; each provider mirrors them)
 | Key | Type | Default | Purpose |
 |---|---|---|---|
 | `enabled` | `bool` | `true` | `false` sends with a plain client (`GEOLOCATION_GOOGLE_RATELIMIT_ENABLED`). |
-| `owner` | `string` | `app` | Budget owner segment of the key (`GEOLOCATION_RATELIMIT_OWNER`, shared). Blank or non-string throws. |
+| `owner` | `string` | `app` | Budget owner segment of the key (`GEOLOCATION_RATELIMIT_OWNER`, shared). Blank is not set (the default); non-string throws. |
 | `limit` | `int` | provider default | Max requests per window, at least `1` (`GEOLOCATION_GOOGLE_RATELIMIT`). |
-| `per` | `string` | `second`/`minute` | Window: `second`, `minute`, `hour`, `day` (`GEOLOCATION_GOOGLE_RATELIMIT_PER`). Anything else throws. |
+| `per` | `string` | `second`/`minute` | Window: `second`, `minute`, `hour`, `day` (`GEOLOCATION_GOOGLE_RATELIMIT_PER`). Blank is not set (the default); anything else throws. |
 | `adaptive` | `bool` | `true` | Honour `429` `Retry-After` (`GEOLOCATION_GOOGLE_RATELIMIT_ADAPTIVE`). |
-| `max_wait` | `?int` | `null` | Fail-fast ceiling in ms (`0` or more); null paces (`GEOLOCATION_GOOGLE_RATELIMIT_MAX_WAIT`). |
-| `jitter` | `?int` | `null` | Random spread in ms added to defers, `0` or more (`GEOLOCATION_GOOGLE_RATELIMIT_JITTER`). |
+| `max_wait` | `?int` | `null` | Fail-fast ceiling in ms (`0` or more); null or blank paces (`GEOLOCATION_GOOGLE_RATELIMIT_MAX_WAIT`). |
+| `jitter` | `?int` | `null` | Random spread in ms added to defers, `0` or more; null or blank adds none (`GEOLOCATION_GOOGLE_RATELIMIT_JITTER`). |
 
 **Nominatim / OSM (the poster-child strict limit).** OpenStreetMap's Nominatim enforces a
 hard **1 request/second** policy. If you register it as a custom provider, pace it like:
@@ -642,61 +642,62 @@ layer, not a replacement.
 ## Configuration
 
 Published to `config/geolocation.php`. Every `bool` switch accepts `true`/`false`, `1`/`0`,
-`on`/`off` or `yes`/`no`, from `.env` or the published file; an unset one takes its default, and
-anything else (say `GEOLOCATION_CACHE=disabled`) throws package-toolkit's
+`on`/`off` or `yes`/`no`, from `.env` or the published file; an unset or blank one takes its
+default, and anything else (say `GEOLOCATION_CACHE=disabled`) throws package-toolkit's
 `InvalidConfigurationException` naming the key on the first lookup.
 
 Every other setting is just as strict. An integer must be a whole number (`30` or `"30"`;
-`five`, `5.5`, `1e3` and `''` throw rather than becoming `0`), a string setting must be a
-non-empty string, and a fixed vocabulary (`per`, `services.maxmind_web.service`) rejects
-anything outside it. An unset key (or `null`) takes its default. Every key:
+`five`, `5.5` and `1e3` throw rather than becoming `0`), a string setting must be a string, and
+a fixed vocabulary (`per`, `services.maxmind_web.service`) rejects anything outside it. A key
+that is not set — absent, `null` or blank (a host's `KEY=`) — takes its default (an optional
+`max_wait` / `jitter` stays off). Every key:
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
 | `pipeline` | `list<string>` | all bundled provider names | Ordered provider names to consult. A bundled name you removed from `providers` is skipped; any other unregistered name throws `UnknownProviderException`, and a non-list throws. An empty list consults `providers` in its own order. |
 | `providers` | `array<string, class-string>` | the bundled map | Name → provider class. Every entry needs a name (an unnamed one throws `UnknownProviderException`). |
-| `timeout` | `int` | `5` | HTTP timeout in seconds, at least `1` (`GEOLOCATION_TIMEOUT`). A per-call `timeout` override is held to the same rule. |
+| `timeout` | `int` | `5` | HTTP timeout in seconds, at least `1` (`GEOLOCATION_TIMEOUT`). A per-call `timeout` override is held to the same rule (a blank one is not set, so the config applies). |
 | `cache.enabled` | `bool` | `false` | Cache successful lookups (`GEOLOCATION_CACHE`). |
-| `cache.store` | `?string` | `null` | Cache store, null = default (`GEOLOCATION_CACHE_STORE`). Blank or non-string throws. |
+| `cache.store` | `?string` | `null` | Cache store, null or blank = default (`GEOLOCATION_CACHE_STORE`). Non-string throws. |
 | `cache.ttl` | `int` | `86400` | Cache TTL in seconds, at least `1` (`GEOLOCATION_CACHE_TTL`). |
-| `cache.prefix` | `string` | `geolocation` | Cache key prefix (`GEOLOCATION_CACHE_PREFIX`). Blank or non-string throws. |
+| `cache.prefix` | `string` | `geolocation` | Cache key prefix (`GEOLOCATION_CACHE_PREFIX`). Blank is not set (the default); non-string throws. |
 | `events.enabled` | `bool` | `true` | Dispatch resolution events (`GEOLOCATION_EVENTS`). |
 | `default.humanReadable` | `string` | `''` | Fallback location's display name (`GEOLOCATION_DEFAULT_HUMAN_READABLE`). |
 | `default.street` | `string` | `''` | Fallback street (`GEOLOCATION_DEFAULT_STREET`). |
 | `default.city` | `string` | `''` | Fallback city (`GEOLOCATION_DEFAULT_CITY`). |
 | `default.country` | `string` | `''` | Fallback ISO country code (`GEOLOCATION_DEFAULT_COUNTRY_ISO_CODE`). |
-| `default.latitude` | `float` | `0.0` | Fallback latitude, `-90`–`90` (`GEOLOCATION_DEFAULT_LATITUDE`). A non-number throws. |
-| `default.longitude` | `float` | `0.0` | Fallback longitude, `-180`–`180` (`GEOLOCATION_DEFAULT_LONGITUDE`). A non-number throws. |
-| `services.ipinfo.url` | `string` | `https://ipinfo.io/` | IPinfo base URL (`IPINFO_URL`). Blank or non-string throws. |
+| `default.latitude` | `float` | `0.0` | Fallback latitude, `-90`–`90` (`GEOLOCATION_DEFAULT_LATITUDE`). Blank is not set (`0.0`); a non-number throws. |
+| `default.longitude` | `float` | `0.0` | Fallback longitude, `-180`–`180` (`GEOLOCATION_DEFAULT_LONGITUDE`). Blank is not set (`0.0`); a non-number throws. |
+| `services.ipinfo.url` | `string` | `https://ipinfo.io/` | IPinfo base URL (`IPINFO_URL`). Blank is not set (the default); non-string throws. |
 | `services.ipinfo.token` | `?string` | `null` | IPinfo token; omitted when null (`IPINFO_TOKEN`). |
 | `services.ipinfo.retry` | `int` | `3` | Retry attempts (`IPINFO_RETRY_TIMES`), `0` or more. |
 | `services.ipinfo.retry_delay` | `int` | `100` | Retry delay in ms (`IPINFO_RETRY_DELAY_MS`), `0` or more. |
-| `services.google.url` | `string` | Google Maps API base | Google base URL (`GOOGLE_MAPS_URL`). Blank or non-string throws. |
+| `services.google.url` | `string` | Google Maps API base | Google base URL (`GOOGLE_MAPS_URL`). Blank is not set (the default); non-string throws. |
 | `services.google.key` | `?string` | `null` | Google Maps API key (`GOOGLE_MAPS_API_KEY`). |
 | `services.google.retry` | `int` | `3` | Retry attempts (`GOOGLE_MAPS_RETRY_TIMES`), `0` or more. |
 | `services.google.retry_delay` | `int` | `100` | Retry delay in ms (`GOOGLE_MAPS_RETRY_DELAY_MS`), `0` or more. |
-| `services.ip2location.url` | `string` | `https://api.ip2location.io` | IP2Location.io base URL (`IP2LOCATION_URL`). Blank or non-string throws. |
+| `services.ip2location.url` | `string` | `https://api.ip2location.io` | IP2Location.io base URL (`IP2LOCATION_URL`). Blank is not set (the default); non-string throws. |
 | `services.ip2location.key` | `?string` | `null` | IP2Location.io API key (`IP2LOCATION_API_KEY`). |
 | `services.ip2location.retry` | `int` | `2` | Retry attempts (`IP2LOCATION_RETRY_TIMES`), `0` or more. |
 | `services.ip2location.retry_delay` | `int` | `100` | Retry delay in ms (`IP2LOCATION_RETRY_DELAY_MS`), `0` or more. |
 | `services.maxmind_web.enabled` | `bool` | `false` | Enable the web-service provider (`MAXMIND_WEB_ENABLED`). |
-| `services.maxmind_web.base_url` | `string` | GeoIP2 base | Web-service base URL (`MAXMIND_WEB_URL`). Blank or non-string throws. |
+| `services.maxmind_web.base_url` | `string` | GeoIP2 base | Web-service base URL (`MAXMIND_WEB_URL`). Blank is not set (the default); non-string throws. |
 | `services.maxmind_web.account_id` | `?string` | `null` | MaxMind account ID (`MAXMIND_ACCOUNT_ID`). |
 | `services.maxmind_web.license_key` | `?string` | `null` | MaxMind license key (`MAXMIND_LICENSE_KEY`). |
-| `services.maxmind_web.service` | `string` | `city` | `city`, `country`, or `insights` (`MAXMIND_WEB_SERVICE`); anything else throws. |
+| `services.maxmind_web.service` | `string` | `city` | `city`, `country`, or `insights` (`MAXMIND_WEB_SERVICE`); blank is not set (`city`); anything else throws. |
 | `services.maxmind_web.retry` | `int` | `2` | Retry attempts (`MAXMIND_WEB_RETRY_TIMES`), `0` or more. |
 | `services.maxmind_web.retry_delay` | `int` | `100` | Retry delay in ms (`MAXMIND_WEB_RETRY_DELAY_MS`), `0` or more. |
 | `services.maxmind_database.enabled` | `bool` | `false` | Enable the local `.mmdb` provider (`MAXMIND_DB_ENABLED`). |
 | `services.maxmind_database.path` | `string` | `storage_path('app/geolocation/GeoLite2-City.mmdb')` | Path to the `.mmdb` file (`MAXMIND_DB_PATH`). |
 | `services.maxmind_database.license_key` | `?string` | `null` | MaxMind license key for downloads (`MAXMIND_LICENSE_KEY`). |
-| `services.maxmind_database.edition` | `string` | `GeoLite2-City` | Edition the update command downloads (`MAXMIND_DB_EDITION`). Blank or non-string throws. |
-| `services.maxmind_database.download_url` | `string` | MaxMind download endpoint | Download URL base (`MAXMIND_DB_DOWNLOAD_URL`). Blank or non-string throws. |
+| `services.maxmind_database.edition` | `string` | `GeoLite2-City` | Edition the update command downloads (`MAXMIND_DB_EDITION`). Blank is not set (the default); non-string throws. |
+| `services.maxmind_database.download_url` | `string` | MaxMind download endpoint | Download URL base (`MAXMIND_DB_DOWNLOAD_URL`). Blank is not set (the default); non-string throws. |
 | `services.<provider>.rate_limits.enabled` | `bool` | `true` | Throttle the provider's sends; `false` = plain client. |
-| `services.<provider>.rate_limits.owner` | `string` | `app` | Owner segment of the budget key (`GEOLOCATION_RATELIMIT_OWNER`). Blank or non-string throws. |
+| `services.<provider>.rate_limits.owner` | `string` | `app` | Owner segment of the budget key (`GEOLOCATION_RATELIMIT_OWNER`). Blank is not set (the default); non-string throws. |
 | `services.<provider>.rate_limits.limit` | `int` | `50` (google) / `60` | Max requests per window, at least `1`. |
-| `services.<provider>.rate_limits.per` | `string` | `second` (google) / `minute` | Window: `second`/`minute`/`hour`/`day`; anything else throws. |
+| `services.<provider>.rate_limits.per` | `string` | `second` (google) / `minute` | Window: `second`/`minute`/`hour`/`day`; blank is not set (the default); anything else throws. |
 | `services.<provider>.rate_limits.adaptive` | `bool` | `true` | Honour the provider's `429` `Retry-After`. |
-| `services.<provider>.rate_limits.max_wait` | `?int` | `null` | Fail-fast ceiling in ms (`0` or more); null = pace (wait). |
+| `services.<provider>.rate_limits.max_wait` | `?int` | `null` | Fail-fast ceiling in ms (`0` or more); null or blank = pace (wait). |
 | `services.<provider>.rate_limits.jitter` | `?int` | `null` | Random spread in ms added to defers (`0` or more). |
 
 The `rate_limits` block exists on the four HTTP providers (`google`, `ipinfo`,
