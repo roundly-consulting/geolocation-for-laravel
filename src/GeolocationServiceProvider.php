@@ -28,10 +28,22 @@ final class GeolocationServiceProvider extends PackageServiceProvider
             ->contributesToAbout(static function (): array {
                 $pipeline = config('geolocation.pipeline', []);
 
+                // An empty pipeline consults the "providers" map in its own order, so that
+                // is what renders. A broken value renders as such; the lookup itself throws.
+                if ($pipeline === [] || $pipeline === null) {
+                    $providers = config('geolocation.providers', []);
+                    $pipeline = is_array($providers) ? array_keys($providers) : $providers;
+                }
+
                 return [
-                    'Pipeline' => is_array($pipeline) && $pipeline !== []
-                        ? implode(', ', array_map(strval(...), $pipeline))
-                        : 'NONE',
+                    'Pipeline' => match (true) {
+                        ! is_array($pipeline) => 'INVALID',
+                        $pipeline === [] => 'NONE',
+                        default => implode(', ', array_map(
+                            static fn (mixed $name): string => is_scalar($name) ? (string) $name : get_debug_type($name),
+                            $pipeline,
+                        )),
+                    },
                     'Cache' => Config::boolean('geolocation.cache.enabled') ? 'ENABLED' : 'OFF',
                     'Events' => Config::boolean('geolocation.events.enabled', true) ? 'ENABLED' : 'OFF',
                 ];

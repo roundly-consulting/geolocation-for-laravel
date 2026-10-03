@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Geolocation\Concerns;
 use Closure;
 use Illuminate\Http\Client\Response;
 use RoundlyConsulting\Geolocation\Exceptions\RateLimitExceededException;
+use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
 use RoundlyConsulting\HttpClientRateLimits\Enums\Timespan;
 use RoundlyConsulting\HttpClientRateLimits\Exceptions\RateLimitExceededException as HttpRateLimitExceededException;
 use RoundlyConsulting\HttpClientRateLimits\Facades\RateLimits;
@@ -42,24 +43,29 @@ trait InteractsWithRateLimits
             return null;
         }
 
-        $timespan = Timespan::tryFrom((string) ($config['per'] ?? 'second')) ?? Timespan::Second;
-        $owner = (string) ($config['owner'] ?? 'app');
+        // Every value is read strictly: a typo'd window, a junk limit or a junk max_wait /
+        // jitter throws naming its key instead of pacing per second, at 0, or not at all.
+        $section = "geolocation.services.{$provider}.rate_limits";
 
-        $rateLimit = RateLimits::make(new Limit(
-            maxAttempts: (int) ($config['limit'] ?? 60),
-            timespan: $timespan,
-        ))->by("geolocation:{$provider}:{$owner}");
+        $timespan = GeolocationConfig::enum("{$section}.per", $config['per'] ?? null, Timespan::class, Timespan::Second);
+        $owner = GeolocationConfig::string("{$section}.owner", $config['owner'] ?? null, 'app');
+        $limit = GeolocationConfig::integer("{$section}.limit", $config['limit'] ?? null, 60, min: 1);
+        $maxWait = GeolocationConfig::optionalInteger("{$section}.max_wait", $config['max_wait'] ?? null, min: 0);
+        $jitter = GeolocationConfig::optionalInteger("{$section}.jitter", $config['jitter'] ?? null, min: 0);
+
+        $rateLimit = RateLimits::make(new Limit(maxAttempts: $limit, timespan: $timespan))
+            ->by("geolocation:{$provider}:{$owner}");
 
         if (Config::boolean("geolocation.services.{$provider}.rate_limits.adaptive", true)) {
             $rateLimit->adaptive();
         }
 
-        if (isset($config['max_wait']) && is_numeric($config['max_wait'])) {
-            $rateLimit->maxWait((int) $config['max_wait']);
+        if ($maxWait !== null) {
+            $rateLimit->maxWait($maxWait);
         }
 
-        if (isset($config['jitter']) && is_numeric($config['jitter'])) {
-            $rateLimit->jitter((int) $config['jitter']);
+        if ($jitter !== null) {
+            $rateLimit->jitter($jitter);
         }
 
         return $rateLimit;

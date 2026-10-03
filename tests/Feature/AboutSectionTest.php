@@ -53,8 +53,9 @@ it('renders the pipeline without disclosing a provider credential', function ():
  * line that goes blank when nothing is configured is indistinguishable from one that
  * broke — and it is the state a host most needs `about` to be legible in.
  */
-it('reports NONE rather than an empty line when the pipeline is empty', function (): void {
+it('reports NONE rather than an empty line when nothing would be consulted', function (): void {
     config()->set('geolocation.pipeline', []);
+    config()->set('geolocation.providers', []);
     config()->set('geolocation.cache.enabled', false);
     config()->set('geolocation.events.enabled', false);
 

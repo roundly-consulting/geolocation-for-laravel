@@ -57,7 +57,7 @@ return [
     |
     */
 
-    'timeout' => (int) env('GEOLOCATION_TIMEOUT', 5),
+    'timeout' => env('GEOLOCATION_TIMEOUT', 5),
 
     /*
     |--------------------------------------------------------------------------
@@ -73,7 +73,7 @@ return [
     'cache' => [
         'enabled' => env('GEOLOCATION_CACHE', false),
         'store' => env('GEOLOCATION_CACHE_STORE'),
-        'ttl' => (int) env('GEOLOCATION_CACHE_TTL', 86400),
+        'ttl' => env('GEOLOCATION_CACHE_TTL', 86400),
         'prefix' => env('GEOLOCATION_CACHE_PREFIX', 'geolocation'),
     ],
 
@@ -145,7 +145,7 @@ return [
             'rate_limits' => [
                 'enabled' => env('GEOLOCATION_IPINFO_RATELIMIT_ENABLED', true),
                 'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
-                'limit' => (int) env('GEOLOCATION_IPINFO_RATELIMIT', 60),
+                'limit' => env('GEOLOCATION_IPINFO_RATELIMIT', 60),
                 'per' => env('GEOLOCATION_IPINFO_RATELIMIT_PER', 'minute'), // second|minute|hour|day
                 'adaptive' => env('GEOLOCATION_IPINFO_RATELIMIT_ADAPTIVE', true),
                 'max_wait' => env('GEOLOCATION_IPINFO_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
@@ -161,7 +161,7 @@ return [
             'rate_limits' => [
                 'enabled' => env('GEOLOCATION_GOOGLE_RATELIMIT_ENABLED', true),
                 'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
-                'limit' => (int) env('GEOLOCATION_GOOGLE_RATELIMIT', 50),
+                'limit' => env('GEOLOCATION_GOOGLE_RATELIMIT', 50),
                 'per' => env('GEOLOCATION_GOOGLE_RATELIMIT_PER', 'second'), // second|minute|hour|day
                 'adaptive' => env('GEOLOCATION_GOOGLE_RATELIMIT_ADAPTIVE', true),
                 'max_wait' => env('GEOLOCATION_GOOGLE_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
@@ -172,12 +172,12 @@ return [
         'ip2location' => [
             'url' => env('IP2LOCATION_URL', 'https://api.ip2location.io'),
             'key' => env('IP2LOCATION_API_KEY'),
-            'retry' => (int) env('IP2LOCATION_RETRY_TIMES', 2),
-            'retry_delay' => (int) env('IP2LOCATION_RETRY_DELAY_MS', 100),
+            'retry' => env('IP2LOCATION_RETRY_TIMES', 2),
+            'retry_delay' => env('IP2LOCATION_RETRY_DELAY_MS', 100),
             'rate_limits' => [
                 'enabled' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_ENABLED', true),
                 'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
-                'limit' => (int) env('GEOLOCATION_IP2LOCATION_RATELIMIT', 60),
+                'limit' => env('GEOLOCATION_IP2LOCATION_RATELIMIT', 60),
                 'per' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_PER', 'minute'), // second|minute|hour|day
                 'adaptive' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_ADAPTIVE', true),
                 'max_wait' => env('GEOLOCATION_IP2LOCATION_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast
@@ -191,12 +191,12 @@ return [
             'account_id' => env('MAXMIND_ACCOUNT_ID'),
             'license_key' => env('MAXMIND_LICENSE_KEY'),
             'service' => env('MAXMIND_WEB_SERVICE', 'city'), // city|country|insights
-            'retry' => (int) env('MAXMIND_WEB_RETRY_TIMES', 2),
-            'retry_delay' => (int) env('MAXMIND_WEB_RETRY_DELAY_MS', 100),
+            'retry' => env('MAXMIND_WEB_RETRY_TIMES', 2),
+            'retry_delay' => env('MAXMIND_WEB_RETRY_DELAY_MS', 100),
             'rate_limits' => [
                 'enabled' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ENABLED', true),
                 'owner' => env('GEOLOCATION_RATELIMIT_OWNER', 'app'),
-                'limit' => (int) env('GEOLOCATION_MAXMIND_WEB_RATELIMIT', 60),
+                'limit' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT', 60),
                 'per' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_PER', 'minute'), // second|minute|hour|day
                 'adaptive' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_ADAPTIVE', true),
                 'max_wait' => env('GEOLOCATION_MAXMIND_WEB_RATELIMIT_MAX_WAIT'), // ms; null = pace, set = fail fast

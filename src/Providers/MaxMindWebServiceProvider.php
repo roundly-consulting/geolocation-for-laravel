@@ -15,6 +15,7 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
+use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
@@ -60,12 +61,18 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
         return $this->toLocation($body);
     }
 
+    /**
+     * The GeoIP2 web service to call. An unknown name throws rather than quietly calling
+     * `city` — a host that asked for `insights` would otherwise pay for, and get, less.
+     */
     private function service(): string
     {
-        /** @var string $service */
-        $service = config('geolocation.services.maxmind_web.service', 'city');
-
-        return in_array($service, ['city', 'country', 'insights'], true) ? $service : 'city';
+        return GeolocationConfig::oneOf(
+            'geolocation.services.maxmind_web.service',
+            config('geolocation.services.maxmind_web.service'),
+            ['city', 'country', 'insights'],
+            'city',
+        );
     }
 
     private function licenseKey(): string
@@ -79,14 +86,12 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
 
     private function client(): PendingRequest
     {
-        $timeout = $this->override('timeout');
-
-        return Http::baseUrl(rtrim((string) config('geolocation.services.maxmind_web.base_url'), '/'))
+        return Http::baseUrl(rtrim(GeolocationConfig::string('geolocation.services.maxmind_web.base_url', config('geolocation.services.maxmind_web.base_url'), 'https://geoip.maxmind.com/geoip/v2.1'), '/'))
             ->withBasicAuth((string) config('geolocation.services.maxmind_web.account_id'), $this->licenseKey())
-            ->timeout($timeout !== null ? (int) $timeout : (int) config('geolocation.timeout', 5))
+            ->timeout(GeolocationConfig::timeout($this->override('timeout')))
             ->retry(
-                (int) config('geolocation.services.maxmind_web.retry', 2),
-                (int) config('geolocation.services.maxmind_web.retry_delay', 100),
+                Config::integer('geolocation.services.maxmind_web.retry', 2, min: 0),
+                Config::integer('geolocation.services.maxmind_web.retry_delay', 100, min: 0),
                 throw: false,
             )
             ->acceptJson();

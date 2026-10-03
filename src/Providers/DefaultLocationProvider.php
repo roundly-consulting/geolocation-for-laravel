@@ -19,7 +19,7 @@ final class DefaultLocationProvider implements GeolocationProvider
 {
     public function locate(GeolocationQuery $query): ?Location
     {
-        /** @var array{humanReadable: string, street: string, city: string, country: string, latitude: float|int|string, longitude: float|int|string} $config */
+        /** @var array{humanReadable: string, street: string, city: string, country: string, latitude: float|int|string|null, longitude: float|int|string|null} $config */
         $config = config('geolocation.default');
 
         $location = Location::createFromDefaults($config);

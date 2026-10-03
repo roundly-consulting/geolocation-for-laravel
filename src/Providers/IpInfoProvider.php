@@ -15,6 +15,8 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
+use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 final class IpInfoProvider implements GeolocationProvider
 {
@@ -72,13 +74,11 @@ final class IpInfoProvider implements GeolocationProvider
 
     private function client(): PendingRequest
     {
-        $timeout = $this->override('timeout');
-
-        $client = Http::baseUrl(rtrim((string) config('geolocation.services.ipinfo.url'), '/'))
-            ->timeout($timeout !== null ? (int) $timeout : (int) config('geolocation.timeout', 5))
+        $client = Http::baseUrl(rtrim(GeolocationConfig::string('geolocation.services.ipinfo.url', config('geolocation.services.ipinfo.url'), 'https://ipinfo.io/'), '/'))
+            ->timeout(GeolocationConfig::timeout($this->override('timeout')))
             ->retry(
-                (int) config('geolocation.services.ipinfo.retry'),
-                (int) config('geolocation.services.ipinfo.retry_delay'),
+                Config::integer('geolocation.services.ipinfo.retry', 3, min: 0),
+                Config::integer('geolocation.services.ipinfo.retry_delay', 100, min: 0),
                 throw: false,
             )
             ->acceptJson();

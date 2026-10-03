@@ -32,8 +32,8 @@ it('creates instance from defaults', function () {
         'street' => 'Somewhere',
         'city' => 'Smallville',
         'country' => 'SM',
-        'latitude' => 123.456,
-        'longitude' => 789.1011,
+        'latitude' => 48.1486,
+        'longitude' => 17.1077,
     ]);
 
     expect($location)
@@ -41,8 +41,8 @@ it('creates instance from defaults', function () {
         ->street->toBe('Somewhere')
         ->city->toBe('Smallville')
         ->countryIsoCode->toBe('SM')
-        ->latitude->toBe(123.456)
-        ->longitude->toBe(789.1011)
+        ->latitude->toBe(48.1486)
+        ->longitude->toBe(17.1077)
         ->type->toBe(GeolocationType::Default);
 });
 

@@ -22,6 +22,8 @@ use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 use RoundlyConsulting\Geolocation\Support\Decimal;
+use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * Resolves geolocation via Google's Geocoding API and travel distance via the
@@ -246,14 +248,12 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
 
     private function client(): PendingRequest
     {
-        $timeout = $this->override('timeout');
-
-        return Http::baseUrl(rtrim((string) config('geolocation.services.google.url'), '/'))
+        return Http::baseUrl(rtrim(GeolocationConfig::string('geolocation.services.google.url', config('geolocation.services.google.url'), 'https://maps.googleapis.com/maps/api'), '/'))
             ->withQueryParameters(['key' => $this->key()])
-            ->timeout($timeout !== null ? (int) $timeout : (int) config('geolocation.timeout', 5))
+            ->timeout(GeolocationConfig::timeout($this->override('timeout')))
             ->retry(
-                (int) config('geolocation.services.google.retry'),
-                (int) config('geolocation.services.google.retry_delay'),
+                Config::integer('geolocation.services.google.retry', 3, min: 0),
+                Config::integer('geolocation.services.google.retry_delay', 100, min: 0),
                 throw: false,
             )
             ->acceptJson();

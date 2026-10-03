@@ -7,6 +7,7 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Providers\MaxMindWebServiceProvider;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 beforeEach(function (): void {
     config()->set('geolocation.services.maxmind_web.enabled', true);
@@ -79,16 +80,15 @@ it('uses the configured service path', function (): void {
     Http::assertSent(fn ($request) => str_contains($request->url(), '/insights/'));
 });
 
-it('falls back to the city service for an unknown service name', function (): void {
+it('throws for an unknown service name instead of calling city (strict config)', function (): void {
     config()->set('geolocation.services.maxmind_web.service', 'bogus');
 
-    Http::fake([
-        'geoip.maxmind.com/geoip/v2.1/city/81.2.69.142' => Http::response(cityResponse()),
-    ]);
+    Http::fake();
 
-    (new MaxMindWebServiceProvider)->locate(new GeolocationQuery('81.2.69.142'));
+    expect(fn () => (new MaxMindWebServiceProvider)->locate(new GeolocationQuery('81.2.69.142')))
+        ->toThrow(InvalidConfigurationException::class, 'geolocation.services.maxmind_web.service');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/city/'));
+    Http::assertNothingSent();
 });
 
 it('returns null on bad credentials', function (): void {

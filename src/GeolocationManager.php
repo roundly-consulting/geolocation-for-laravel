@@ -27,7 +27,9 @@ use RoundlyConsulting\Geolocation\Exceptions\DatabaseUpdateException;
 use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\Exceptions\UnknownProviderException;
 use RoundlyConsulting\Geolocation\Providers\GoogleProvider;
+use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
 use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 use SensitiveParameter;
 use Throwable;
@@ -72,6 +74,14 @@ class GeolocationManager
      * @var array<string, array<string, mixed>>
      */
     private array $providerOverrides = [];
+
+    /**
+     * The names the shipped config registers. A pipeline may list one the host removed from
+     * the "providers" map; any other unregistered name is a typo.
+     *
+     * @var list<string>
+     */
+    private const array BUNDLED_PROVIDERS = ['maxmind_database', 'maxmind_web', 'ip2location', 'ipinfo', 'google', 'default'];
 
     public function __construct(
         protected readonly Container $container,
@@ -445,20 +455,37 @@ class GeolocationManager
         /** @var mixed $pipeline */
         $pipeline = config('geolocation.pipeline');
 
-        if (is_array($pipeline) && $pipeline !== []) {
-            $names = array_values(array_filter(
-                array_map(static fn (mixed $name): string => (string) $name, $pipeline),
-                fn (string $name): bool => in_array($name, $available, true) || isset($this->extensions[$name]),
+        if ($pipeline !== null && ! is_array($pipeline)) {
+            throw new InvalidConfigurationException(sprintf(
+                'Configuration value [geolocation.pipeline] must be a list of provider names, [%s] given.',
+                is_scalar($pipeline) ? var_export($pipeline, true) : get_debug_type($pipeline),
             ));
+        }
 
-            // The configured pipeline applies only when it actually matches the available
-            // providers; a custom "providers" config falls back to its own order.
-            if ($names !== []) {
-                return $names;
+        $names = [];
+
+        foreach ($pipeline ?? [] as $name) {
+            if (! is_string($name)) {
+                throw UnknownProviderException::named(is_scalar($name) ? (string) $name : get_debug_type($name));
+            }
+
+            if (in_array($name, $available, true) || isset($this->extensions[$name])) {
+                $names[] = $name;
+
+                continue;
+            }
+
+            // A bundled provider the host trimmed from the "providers" map is skipped, so
+            // trimming the map trims the shipped pipeline with it. Any other name is a typo
+            // and throws instead of silently dropping a provider.
+            if (! in_array($name, self::BUNDLED_PROVIDERS, true)) {
+                throw UnknownProviderException::named($name);
             }
         }
 
-        return $available;
+        // The configured pipeline applies only when it actually matches the available
+        // providers; a custom "providers" config falls back to its own order.
+        return $names !== [] ? $names : $available;
     }
 
     /**
@@ -503,15 +530,16 @@ class GeolocationManager
 
     private function cache(): Repository
     {
-        /** @var string|null $store */
-        $store = config('geolocation.cache.store');
-
-        return Cache::store($store);
+        return Cache::store(GeolocationConfig::optionalString('geolocation.cache.store', config('geolocation.cache.store')));
     }
 
+    /**
+     * At least one second: Laravel forgets a value cached for 0 seconds, so a TTL of 0
+     * would silently switch the cache off.
+     */
     private function cacheTtl(): int
     {
-        return (int) config('geolocation.cache.ttl', 86400);
+        return Config::integer('geolocation.cache.ttl', 86400, min: 1);
     }
 
     private function cacheKey(string $kind, string $hash): string
@@ -531,6 +559,6 @@ class GeolocationManager
 
     private function cachePrefix(): string
     {
-        return (string) config('geolocation.cache.prefix', 'geolocation');
+        return GeolocationConfig::string('geolocation.cache.prefix', config('geolocation.cache.prefix'), 'geolocation');
     }
 }

@@ -45,6 +45,7 @@ it('reports enabled caching and events to the about command', function (): void 
 
 it('reports an empty pipeline to the about command', function (): void {
     config()->set('geolocation.pipeline', []);
+    config()->set('geolocation.providers', []);
 
     $this->artisan('about', ['--only' => 'geolocation'])
         ->expectsOutputToContain('NONE')

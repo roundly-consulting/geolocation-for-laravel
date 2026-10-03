@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Geolocation\DataTransferObjects;
 use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
 
 /**
  * @implements Arrayable<string, mixed>
@@ -27,7 +28,11 @@ final readonly class Location implements Arrayable, JsonSerializable
     ) {}
 
     /**
-     * @param  array{humanReadable: string, street: string, city: string, country: string, latitude: float|int|string, longitude: float|int|string}  $config
+     * Build the `DefaultLocationProvider`'s answer from `geolocation.default`. The
+     * coordinates are read strictly: a number or a decimal string within range, or the
+     * read throws `InvalidConfigurationException` naming the key.
+     *
+     * @param  array{humanReadable: string, street: string, city: string, country: string, latitude: float|int|string|null, longitude: float|int|string|null}  $config
      */
     public static function createFromDefaults(array $config): self
     {
@@ -36,8 +41,8 @@ final readonly class Location implements Arrayable, JsonSerializable
             street: $config['street'],
             city: $config['city'],
             countryIsoCode: $config['country'],
-            latitude: (float) $config['latitude'],
-            longitude: (float) $config['longitude'],
+            latitude: GeolocationConfig::coordinate('geolocation.default.latitude', $config['latitude'], 90.0),
+            longitude: GeolocationConfig::coordinate('geolocation.default.longitude', $config['longitude'], 180.0),
             type: GeolocationType::Default,
         );
     }

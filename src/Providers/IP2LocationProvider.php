@@ -15,6 +15,8 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
+use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * Resolves a location from an IP address through the IP2Location.io HTTP API using
@@ -111,13 +113,11 @@ final class IP2LocationProvider implements GeolocationProvider
 
     private function client(): PendingRequest
     {
-        $timeout = $this->override('timeout');
-
-        return Http::baseUrl(rtrim((string) config('geolocation.services.ip2location.url'), '/'))
-            ->timeout($timeout !== null ? (int) $timeout : (int) config('geolocation.timeout', 5))
+        return Http::baseUrl(rtrim(GeolocationConfig::string('geolocation.services.ip2location.url', config('geolocation.services.ip2location.url'), 'https://api.ip2location.io'), '/'))
+            ->timeout(GeolocationConfig::timeout($this->override('timeout')))
             ->retry(
-                (int) config('geolocation.services.ip2location.retry', 2),
-                (int) config('geolocation.services.ip2location.retry_delay', 100),
+                Config::integer('geolocation.services.ip2location.retry', 2, min: 0),
+                Config::integer('geolocation.services.ip2location.retry_delay', 100, min: 0),
                 throw: false,
             )
             ->acceptJson();

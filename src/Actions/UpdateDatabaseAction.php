@@ -13,6 +13,7 @@ use PharData;
 use PharFileInfo;
 use RecursiveIteratorIterator;
 use RoundlyConsulting\Geolocation\Exceptions\DatabaseUpdateException;
+use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
 use RuntimeException;
 use SensitiveParameter;
 use Throwable;
@@ -53,8 +54,17 @@ final readonly class UpdateDatabaseAction
             throw DatabaseUpdateException::missingPath();
         }
 
+        // Read before the download's try block, so a misconfiguration surfaces as itself
+        // rather than as a failed download.
+        $baseUrl = GeolocationConfig::string(
+            'geolocation.services.maxmind_database.download_url',
+            $this->config->get('geolocation.services.maxmind_database.download_url'),
+            'https://download.maxmind.com/app/geoip_download',
+        );
+        $timeout = GeolocationConfig::integer('geolocation.timeout', $this->config->get('geolocation.timeout'), 5, min: 1);
+
         try {
-            $archive = $this->download($edition, $licenseKey);
+            $archive = $this->download($baseUrl, $timeout * 12, $edition, $licenseKey);
         } catch (ConnectionException|RequestException|RuntimeException $e) {
             // The license key rides in the download URL, which a transport error quotes.
             throw DatabaseUpdateException::downloadFailed($e, [$licenseKey]);
@@ -77,7 +87,11 @@ final readonly class UpdateDatabaseAction
             return $edition;
         }
 
-        return (string) $this->config->get('geolocation.services.maxmind_database.edition', 'GeoLite2-City');
+        return GeolocationConfig::string(
+            'geolocation.services.maxmind_database.edition',
+            $this->config->get('geolocation.services.maxmind_database.edition'),
+            'GeoLite2-City',
+        );
     }
 
     private function destinationPath(?string $path): string
@@ -95,15 +109,10 @@ final readonly class UpdateDatabaseAction
     /**
      * Download the .tar.gz archive to a temporary file and return its path.
      */
-    private function download(string $edition, #[SensitiveParameter] string $licenseKey): string
+    private function download(string $baseUrl, int $timeout, string $edition, #[SensitiveParameter] string $licenseKey): string
     {
-        $baseUrl = (string) $this->config->get(
-            'geolocation.services.maxmind_database.download_url',
-            'https://download.maxmind.com/app/geoip_download',
-        );
-
         $response = $this->http
-            ->timeout((int) $this->config->get('geolocation.timeout', 5) * 12)
+            ->timeout($timeout)
             ->get($baseUrl, [
                 'edition_id' => $edition,
                 'license_key' => $licenseKey,
