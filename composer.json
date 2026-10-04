@@ -8,7 +8,7 @@
         "ip-geolocation",
         "geocoding"
     ],
-    "homepage": "https://github.com/roundly-consulting/geolocation-for-laravel",
+    "homepage": "https://roundly-consulting.com/open-source/docs/geolocation-for-laravel",
     "license": "MIT",
     "authors": [
         {
@@ -17,6 +17,9 @@
             "role": "Developer"
         }
     ],
+    "support": {
+        "docs": "https://roundly-consulting.com/open-source/docs/geolocation-for-laravel"
+    },
     "require": {
         "php": "^8.4",
         "ext-phar": "*",
