@@ -90,14 +90,19 @@ class GeolocationManager
 
     public function locate(GeolocationQuery $query): ?Location
     {
-        if ($this->cacheEnabled()) {
+        // One key, built once, for both the read and the write: rebuilding it after the
+        // providers answered would pick up a generation that a flushCache() during the
+        // lookup moved forward, and file this pre-flush result under the new generation.
+        $key = $this->cacheEnabled() ? $this->cacheKey('locate', $query->cacheKey()) : null;
+
+        if ($key !== null) {
             // Read back through `tryFromArray`, because what is STORED is the array —
             // a cache store may refuse to unserialize classes (Laravel's
             // `cache.serializable_classes` defaults to `false`), which turned an
             // object put here into a `__PHP_Incomplete_Class` and made the
             // `instanceof` below false forever: a cache that never hit, silently
             // re-billing the provider for every lookup.
-            $cached = Location::tryFromArray($this->cache()->get($this->cacheKey('locate', $query->cacheKey())));
+            $cached = Location::tryFromArray($this->cache()->get($key));
 
             if ($cached instanceof Location) {
                 return $cached;
@@ -108,8 +113,8 @@ class GeolocationManager
 
         // The default fallback is what answered because the real providers did not — caching
         // it would keep serving the fallback for the whole TTL after they recover.
-        if ($resolved instanceof Location && $resolved->type !== GeolocationType::Default && $this->cacheEnabled()) {
-            $this->cache()->put($this->cacheKey('locate', $query->cacheKey()), $resolved->toArray(), $this->cacheTtl());
+        if ($key !== null && $resolved instanceof Location && $resolved->type !== GeolocationType::Default) {
+            $this->cache()->put($key, $resolved->toArray(), $this->cacheTtl());
         }
 
         return $resolved;
@@ -165,8 +170,11 @@ class GeolocationManager
 
     public function distance(DistanceQuery $query): ?Distance
     {
-        if ($this->cacheEnabled()) {
-            $cached = Distance::tryFromArray($this->cache()->get($this->cacheKey('distance', $query->cacheKey())));
+        // Built once, like locate()'s, so a flush during the call cannot re-file its result.
+        $key = $this->cacheEnabled() ? $this->cacheKey('distance', $query->cacheKey()) : null;
+
+        if ($key !== null) {
+            $cached = Distance::tryFromArray($this->cache()->get($key));
 
             if ($cached instanceof Distance) {
                 return $cached;
@@ -175,8 +183,8 @@ class GeolocationManager
 
         $resolved = $this->scoped(fn (): ?Distance => $this->resolveDistance($query));
 
-        if ($resolved instanceof Distance && $this->cacheEnabled()) {
-            $this->cache()->put($this->cacheKey('distance', $query->cacheKey()), $resolved->toArray(), $this->cacheTtl());
+        if ($key !== null && $resolved instanceof Distance) {
+            $this->cache()->put($key, $resolved->toArray(), $this->cacheTtl());
         }
 
         return $resolved;

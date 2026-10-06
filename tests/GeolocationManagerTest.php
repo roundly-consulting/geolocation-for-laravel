@@ -10,12 +10,14 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\Distance;
 use RoundlyConsulting\Geolocation\DataTransferObjects\DistanceQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
+use RoundlyConsulting\Geolocation\DistanceProvider;
 use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Events\DistanceResolved;
 use RoundlyConsulting\Geolocation\Events\LocationResolutionFailed;
 use RoundlyConsulting\Geolocation\Events\LocationResolved;
 use RoundlyConsulting\Geolocation\Exceptions\UnknownProviderException;
+use RoundlyConsulting\Geolocation\Facades\Geolocation;
 use RoundlyConsulting\Geolocation\GeolocationManager;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 use RoundlyConsulting\Geolocation\Tests\FakeProviders\FakeAlternativeGeolocationProvider;
@@ -243,4 +245,69 @@ it('leaves provider and error null on the failure event when every provider simp
 
     Event::assertDispatched(LocationResolutionFailed::class, fn (LocationResolutionFailed $event): bool => $event->provider === null
         && $event->error === null);
+});
+
+describe('a flush during a resolution', function (): void {
+    beforeEach(function (): void {
+        config()->set('geolocation.cache.enabled', true);
+        config()->set('geolocation.cache.store', 'array');
+        Cache::store('array')->flush();
+    });
+
+    it('never stores a lookup that started before the flush under the new generation', function (): void {
+        $counter = new ArrayObject(['calls' => 0]);
+        Geolocation::extend('slow', fn (): GeolocationProvider => new class($counter) implements GeolocationProvider
+        {
+            public function __construct(private ArrayObject $counter) {}
+
+            public function locate(GeolocationQuery $query): ?Location
+            {
+                // The flush lands while this lookup is still in flight.
+                if (++$this->counter['calls'] === 1) {
+                    Geolocation::flushCache();
+                }
+
+                return new Location('Slow', 'Main St', 'Town', 'SK', 1.0, 2.0, GeolocationType::Ip);
+            }
+        });
+        config()->set('geolocation.pipeline', ['slow']);
+
+        Geolocation::locateIp('8.8.8.8');
+        Geolocation::locateIp('8.8.8.8');
+
+        expect($counter['calls'])->toBe(2);
+
+        // Results resolved after the flush are cached as usual.
+        Geolocation::locateIp('8.8.8.8');
+
+        expect($counter['calls'])->toBe(2);
+    });
+
+    it('never stores a distance that started before the flush under the new generation', function (): void {
+        $counter = new ArrayObject(['calls' => 0]);
+        Geolocation::extend('slow', fn (): DistanceProvider => new class($counter) implements DistanceProvider
+        {
+            public function __construct(private ArrayObject $counter) {}
+
+            public function distance(DistanceQuery $query): ?Distance
+            {
+                if (++$this->counter['calls'] === 1) {
+                    Geolocation::flushCache();
+                }
+
+                return new Distance('1 km', 1000, '1 min', 60, $query->type);
+            }
+        });
+        config()->set('geolocation.pipeline', ['slow']);
+        $query = DistanceQuery::between(new Coordinates(1, 2), new Coordinates(3, 4));
+
+        Geolocation::distance($query);
+        Geolocation::distance($query);
+
+        expect($counter['calls'])->toBe(2);
+
+        Geolocation::distance($query);
+
+        expect($counter['calls'])->toBe(2);
+    });
 });

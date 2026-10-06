@@ -55,6 +55,9 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 - The `maxmind_database` provider keeps throwing `InvalidDatabaseException` (or
   `DatabaseNotFoundException`) while the `.mmdb` on disk is corrupt or missing. It used to throw
   once and then silently answer from the previous file's reader until the file changed again.
+- `flushCache()` called while a lookup or distance is in flight no longer lets that pre-flush
+  result survive. `locate*()` and `distance()` build their cache key once, so the result is
+  stored under the old generation instead of the new one, where it lived for the whole TTL.
 
 ## 1.0.0 - 2026-10-03
 
