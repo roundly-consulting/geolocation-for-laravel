@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Distance;
 use RoundlyConsulting\Geolocation\DataTransferObjects\DistanceQuery;
@@ -18,15 +19,15 @@ use RoundlyConsulting\Geolocation\Providers\GoogleProvider;
 
 it('returns distance between two locations', function (): void {
     Http::fake([
-        '*/distancematrix/json*' => Http::response([
-            'rows' => [[
-                'elements' => [[
-                    'status' => 'OK',
-                    'distance' => ['text' => '10 km', 'value' => 10000],
-                    'duration' => ['text' => '10 mins', 'value' => 600],
-                ]],
-            ]],
-        ]),
+        'routes.googleapis.com/*' => Http::response([[
+            'originIndex' => 0,
+            'destinationIndex' => 0,
+            'status' => [],
+            'condition' => 'ROUTE_EXISTS',
+            'distanceMeters' => 10000,
+            'duration' => '600s',
+            'localizedValues' => ['distance' => ['text' => '10 km'], 'duration' => ['text' => '10 mins']],
+        ]]),
     ]);
 
     $distance = (new GoogleProvider)->distance(
@@ -42,20 +43,21 @@ it('returns distance between two locations', function (): void {
         ->type->toBe(DistanceType::Driving);
 });
 
-it('returns null when the distance request fails', function (): void {
+it('reports a failed distance request as an unavailable provider', function (): void {
+    Sleep::fake();
     Http::fake([
-        '*/distancematrix/json*' => Http::response(status: 500),
+        'routes.googleapis.com/*' => Http::response(status: 500),
     ]);
 
-    expect((new GoogleProvider)->distance(
+    expect(fn () => (new GoogleProvider)->distance(
         new DistanceQuery(1.2, 3.4, 5.6, 7.8, DistanceType::Walking),
-    ))->toBeNull();
+    ))->toThrow(ProviderUnavailableException::class, 'HTTP 500');
 });
 
-it('returns null when the distance element status is not ok', function (): void {
+it('returns null when the distance element has no route', function (): void {
     Http::fake([
-        '*/distancematrix/json*' => Http::response([
-            'rows' => [['elements' => [['status' => 'ZERO_RESULTS']]]],
+        'routes.googleapis.com/*' => Http::response([
+            ['originIndex' => 0, 'destinationIndex' => 0, 'status' => [], 'condition' => 'ROUTE_NOT_FOUND'],
         ]),
     ]);
 
@@ -181,21 +183,19 @@ it('returns null when geocoding yields no results', function (): void {
 it('never sends coordinates in scientific notation', function (): void {
     Http::fake([
         '*/geocode/json*' => Http::response(['results' => []]),
-        '*/distancematrix/json*' => Http::response(['rows' => []]),
+        'routes.googleapis.com/*' => Http::response([]),
     ]);
 
     $provider = new GoogleProvider;
     $provider->locate(GeolocationQuery::forCoordinates(new Coordinates(0.00001, -0.00002)));
     $provider->distance(new DistanceQuery(0.00001, 0.0, -0.00005, 0.00003, DistanceType::Driving));
-    $provider->distanceMatrix(
-        [new Coordinates(0.00001, 0.0)],
-        [new Coordinates(-0.00005, 0.00003)],
-    );
 
     Http::assertSent(fn ($request): bool => ($request->data()['latlng'] ?? null) === '0.00001,-0.00002');
-    Http::assertSent(fn ($request): bool => ($request->data()['origins'] ?? null) === '0.00001,0'
-        && ($request->data()['destinations'] ?? null) === '-0.00005,0.00003');
     Http::assertNotSent(fn ($request): bool => str_contains(urldecode($request->url()), 'E-'));
+
+    // The Routes API takes JSON numbers, where an exponent is valid and read exactly.
+    Http::assertSent(fn ($request): bool => ($request->data()['origins'][0]['waypoint']['location']['latLng'] ?? null) === ['latitude' => 0.00001, 'longitude' => 0.0]
+        && ($request->data()['destinations'][0]['waypoint']['location']['latLng'] ?? null) === ['latitude' => -0.00005, 'longitude' => 0.00003]);
 });
 
 it('reports a geocoding request google rejected as an unavailable provider', function (string $status): void {

@@ -139,7 +139,7 @@ class GeolocationManager
 
     /**
      * Resolve a distance grid between several origins and destinations via the Google
-     * Distance Matrix provider, degrading gracefully when it is unavailable.
+     * provider (Routes API computeRouteMatrix), degrading gracefully when it is unavailable.
      *
      * @param  list<Coordinates>  $origins
      * @param  list<Coordinates>  $destinations

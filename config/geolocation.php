@@ -153,8 +153,12 @@ return [
             ],
         ],
 
+        // Geocoding (address and coordinate lookups) calls the Geocoding API at "url";
+        // distances call the Routes API (computeRouteMatrix) at "routes_url". The key
+        // needs both APIs enabled.
         'google' => [
             'url' => env('GOOGLE_MAPS_URL', 'https://maps.googleapis.com/maps/api'),
+            'routes_url' => env('GOOGLE_ROUTES_URL', 'https://routes.googleapis.com'),
             'key' => env('GOOGLE_MAPS_API_KEY'),
             'retry' => env('GOOGLE_MAPS_RETRY_TIMES', 3),
             'retry_delay' => env('GOOGLE_MAPS_RETRY_DELAY_MS', 100),

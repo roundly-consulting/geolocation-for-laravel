@@ -75,13 +75,14 @@ it('turns a transport failure into a redacted ProviderUnavailableException', fun
     'maxmind_web' => fn (): array => [new MaxMindWebServiceProvider, GeolocationQuery::forIp('8.8.8.8'), 'maxmind_web', 'MM-SECRET'],
 ]);
 
-it('redacts the google key from a failed distance lookup', function (): void {
+it('keeps the google key out of a failed distance lookup', function (): void {
     Http::fake(['*' => failedConnection()]);
 
+    // The Routes API key travels in a header, so the URL a transport error quotes never has it.
     expect(fn () => (new GoogleProvider)->distance(new DistanceQuery(1, 2, 3, 4, DistanceType::Driving)))
         ->toThrow(fn (ProviderUnavailableException $e) => expect($e->getMessage())
             ->not->toContain('GOOGLE-SECRET')
-            ->toContain('key=[redacted]'));
+            ->toContain('routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix'));
 });
 
 it('reports the failing provider and its redacted error when nothing resolves', function (): void {

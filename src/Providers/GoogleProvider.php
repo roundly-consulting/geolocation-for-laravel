@@ -27,54 +27,29 @@ use RoundlyConsulting\Geolocation\Support\RetryPolicy;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
- * Resolves geolocation via Google's Geocoding API and travel distance via the
- * Distance Matrix API, using Laravel's HTTP client (no third-party SDK).
+ * Resolves geolocation via Google's Geocoding API and travel distance via the Routes API's
+ * computeRouteMatrix, using Laravel's HTTP client (no third-party SDK).
  */
 final class GoogleProvider implements DistanceProvider, GeolocationProvider
 {
     use HasProviderOverrides;
     use InteractsWithRateLimits;
 
+    /**
+     * The Routes API's response field mask: it returns no field unless asked for one.
+     * Every field here is in the Compute Route Matrix Essentials SKU.
+     */
+    private const string ROUTE_MATRIX_FIELDS = 'originIndex,destinationIndex,status,condition,distanceMeters,duration,localizedValues';
+
     public function distance(DistanceQuery $query): ?Distance
     {
-        try {
-            $response = $this->throttled('google', fn (): Response => $this->client()->get('/distancematrix/json', [
-                'origins' => Decimal::pair($query->fromLatitude, $query->fromLongitude),
-                'destinations' => Decimal::pair($query->toLatitude, $query->toLongitude),
-                'mode' => $query->type === DistanceType::Driving ? 'driving' : 'walking',
-            ]));
-        } catch (ConnectionException $e) {
-            throw $this->unavailable($e);
-        }
-
-        if ($response->failed()) {
-            return null;
-        }
-
-        /** @var array<string, mixed>|null $element */
-        $element = $response->json('rows.0.elements.0');
-
-        if (! is_array($element) || ($element['status'] ?? null) !== 'OK') {
-            return null;
-        }
-
-        /** @var array{text: string, value: int} $distance */
-        $distance = $element['distance'];
-        /** @var array{text: string, value: int} $duration */
-        $duration = $element['duration'];
-
-        return new Distance(
-            humanReadableDistance: $distance['text'],
-            distanceInMeters: (int) $distance['value'],
-            humanReadableDuration: $duration['text'],
-            durationInSeconds: (int) $duration['value'],
-            type: $query->type,
-        );
+        return $this->routeMatrix([$query->from()], [$query->to()], $query->type)[0][0] ?? null;
     }
 
     /**
-     * Resolve a full distance grid between several origins and destinations in a single
-     * Distance Matrix call, degrading to null cells when the API fails or a leg is missing.
+     * Resolve a full distance grid between several origins and destinations through the
+     * Routes API's computeRouteMatrix, degrading to null cells when the API is unreachable or
+     * rejects the request, or when a leg has no route.
      *
      * @param  list<Coordinates>  $origins
      * @param  list<Coordinates>  $destinations
@@ -84,77 +59,171 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
         array $destinations,
         DistanceType $type = DistanceType::Driving,
     ): DistanceMatrix {
-        $rows = [];
-
         if ($origins === [] || $destinations === []) {
             return new DistanceMatrix($origins, $destinations, []);
         }
 
         try {
-            $response = $this->throttled('google', fn (): Response => $this->client()->get('/distancematrix/json', [
-                'origins' => $this->encode($origins),
-                'destinations' => $this->encode($destinations),
-                'mode' => $type === DistanceType::Driving ? 'driving' : 'walking',
-            ]));
-        } catch (ConnectionException) {
-            // An unreachable API degrades every cell to null rather than aborting.
-            $response = null;
+            $cells = $this->routeMatrix($origins, $destinations, $type);
+        } catch (ProviderUnavailableException) {
+            // An unreachable or refusing API degrades every cell to null rather than aborting.
+            $cells = [];
         }
 
-        /** @var list<array<string, mixed>> $responseRows */
-        $responseRows = $response !== null && $response->successful()
-            ? (array) $response->json('rows', [])
-            : [];
+        $rows = [];
 
-        foreach ($origins as $originIndex => $origin) {
-            $elements = $responseRows[$originIndex]['elements'] ?? [];
-            $cells = [];
-
-            foreach ($destinations as $destinationIndex => $destination) {
-                $element = is_array($elements) ? ($elements[$destinationIndex] ?? null) : null;
-                $cells[$destinationIndex] = is_array($element)
-                    ? $this->elementToDistance($element, $type)
-                    : null;
+        foreach (array_keys($origins) as $originIndex) {
+            foreach (array_keys($destinations) as $destinationIndex) {
+                $rows[$originIndex][$destinationIndex] = $cells[$originIndex][$destinationIndex] ?? null;
             }
-
-            $rows[$originIndex] = $cells;
         }
 
         return new DistanceMatrix($origins, $destinations, $rows);
     }
 
     /**
-     * @param  array<string, mixed>  $element
+     * One computeRouteMatrix call, keyed [originIndex][destinationIndex] as Google numbers
+     * them (the elements arrive in no particular order). A cell without a route is null.
+     *
+     * @param  list<Coordinates>  $origins
+     * @param  list<Coordinates>  $destinations
+     * @return array<int, array<int, Distance|null>>
+     *
+     * @throws ProviderUnavailableException when the API is unreachable or rejects the request
+     */
+    private function routeMatrix(array $origins, array $destinations, DistanceType $type): array
+    {
+        try {
+            $response = $this->throttled('google', fn (): Response => $this->routesClient()->post(
+                '/distanceMatrix/v2:computeRouteMatrix',
+                $this->routeMatrixBody($origins, $destinations, $type),
+            ));
+        } catch (ConnectionException $e) {
+            throw $this->unavailable($e);
+        }
+
+        if ($response->failed() || is_array($response->json('error')) || is_array($response->json('0.error'))) {
+            throw $this->rejected($response);
+        }
+
+        $cells = [];
+
+        foreach ((array) $response->json() as $element) {
+            if (! is_array($element)) {
+                continue;
+            }
+
+            // Proto3 JSON may leave a zero index out.
+            $originIndex = $element['originIndex'] ?? 0;
+            $destinationIndex = $element['destinationIndex'] ?? 0;
+
+            if (is_int($originIndex) && is_int($destinationIndex)) {
+                $cells[$originIndex][$destinationIndex] = $this->elementToDistance($element, $type);
+            }
+        }
+
+        return $cells;
+    }
+
+    /**
+     * @param  list<Coordinates>  $origins
+     * @param  list<Coordinates>  $destinations
+     * @return array<string, mixed>
+     */
+    private function routeMatrixBody(array $origins, array $destinations, DistanceType $type): array
+    {
+        $waypoint = static fn (Coordinates $point): array => ['waypoint' => ['location' => ['latLng' => [
+            'latitude' => $point->latitude,
+            'longitude' => $point->longitude,
+        ]]]];
+
+        $body = [
+            'origins' => array_map($waypoint, $origins),
+            'destinations' => array_map($waypoint, $destinations),
+            'travelMode' => $type === DistanceType::Driving ? 'DRIVE' : 'WALK',
+        ];
+
+        // Traffic-unaware, like the Distance Matrix default it replaces: it keeps the request
+        // in the Essentials SKU. A routing preference is only valid for DRIVE.
+        if ($type === DistanceType::Driving) {
+            $body['routingPreference'] = 'TRAFFIC_UNAWARE';
+        }
+
+        return $body;
+    }
+
+    /**
+     * @param  array<mixed>  $element
      */
     private function elementToDistance(array $element, DistanceType $type): ?Distance
     {
-        if (($element['status'] ?? null) !== 'OK') {
+        $status = $element['status'] ?? [];
+
+        if ((is_array($status) && ($status['code'] ?? 0) !== 0) || ($element['condition'] ?? null) !== 'ROUTE_EXISTS') {
             return null;
         }
 
-        /** @var array{text: string, value: int} $distance */
-        $distance = $element['distance'];
-        /** @var array{text: string, value: int} $duration */
-        $duration = $element['duration'];
+        $seconds = $this->seconds($element['duration'] ?? '0s');
+
+        if ($seconds === null) {
+            return null;
+        }
+
+        $meters = is_numeric($element['distanceMeters'] ?? null) ? (int) $element['distanceMeters'] : 0;
+        $localized = is_array($element['localizedValues'] ?? null) ? $element['localizedValues'] : [];
 
         return new Distance(
-            humanReadableDistance: $distance['text'],
-            distanceInMeters: (int) $distance['value'],
-            humanReadableDuration: $duration['text'],
-            durationInSeconds: (int) $duration['value'],
+            humanReadableDistance: $this->localizedText($localized, 'distance') ?? "{$meters} m",
+            distanceInMeters: $meters,
+            humanReadableDuration: $this->localizedText($localized, 'duration') ?? "{$seconds} s",
+            durationInSeconds: $seconds,
             type: $type,
         );
     }
 
     /**
-     * @param  list<Coordinates>  $points
+     * A protobuf Duration as JSON — `"160s"`, `"160.5s"` — in whole seconds.
      */
-    private function encode(array $points): string
+    private function seconds(mixed $duration): ?int
     {
-        return implode('|', array_map(
-            static fn (Coordinates $point): string => Decimal::pair($point->latitude, $point->longitude),
-            $points,
-        ));
+        if (! is_string($duration) || preg_match('/^(\d+(?:\.\d+)?)s$/', $duration, $matches) !== 1) {
+            return null;
+        }
+
+        return (int) round((float) $matches[1]);
+    }
+
+    /**
+     * @param  array<mixed>  $localized
+     */
+    private function localizedText(array $localized, string $field): ?string
+    {
+        $text = is_array($localized[$field] ?? null) ? ($localized[$field]['text'] ?? null) : null;
+
+        return is_string($text) && $text !== '' ? $text : null;
+    }
+
+    /**
+     * The Routes API reports a rejected request (key without the Routes API enabled, quota,
+     * invalid argument) as an HTTP error with a google.rpc.Status body — or, once the stream
+     * has started, as an error element inside a 200 array. Either way the provider is unusable
+     * for this call: say why, with the key scrubbed.
+     */
+    private function rejected(Response $response): ProviderUnavailableException
+    {
+        $error = $response->json('error') ?? $response->json('0.error');
+        $error = is_array($error) ? $error : [];
+
+        $status = is_string($error['status'] ?? null) && $error['status'] !== ''
+            ? $error['status']
+            : "HTTP {$response->status()}";
+        $message = is_string($error['message'] ?? null) && $error['message'] !== '' ? $error['message'] : null;
+
+        return ProviderUnavailableException::rejected(
+            'google',
+            $message !== null ? "{$status}: {$message}" : $status,
+            [$this->key()],
+        );
     }
 
     public function locate(GeolocationQuery $query): ?Location
@@ -166,7 +235,7 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
         }
 
         try {
-            $response = $this->throttled('google', fn (): Response => $this->client()->get('/geocode/json', $parameters));
+            $response = $this->throttled('google', fn (): Response => $this->geocodingClient()->get('/geocode/json', $parameters));
         } catch (ConnectionException $e) {
             throw $this->unavailable($e);
         }
@@ -264,18 +333,40 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
     }
 
     /**
-     * The key rides in the query string, so a transport error's message (which ends in the
-     * request URL) carries it — redact before it leaves the provider.
+     * The geocoding key rides in the query string, so a transport error's message (which ends
+     * in the request URL) carries it — redact before it leaves the provider.
      */
     private function unavailable(ConnectionException $e): ProviderUnavailableException
     {
         return ProviderUnavailableException::for('google', $e, [$this->key()]);
     }
 
-    private function client(): PendingRequest
+    /**
+     * The Geocoding API client: the key travels as the `key` query parameter.
+     */
+    private function geocodingClient(): PendingRequest
     {
-        return Http::baseUrl(rtrim(GeolocationConfig::string('geolocation.services.google.url', config('geolocation.services.google.url'), 'https://maps.googleapis.com/maps/api'), '/'))
-            ->withQueryParameters(['key' => $this->key()])
+        return $this->client(GeolocationConfig::string('geolocation.services.google.url', config('geolocation.services.google.url'), 'https://maps.googleapis.com/maps/api'))
+            ->withQueryParameters(['key' => $this->key()]);
+    }
+
+    /**
+     * The Routes API client: the key travels in the `X-Goog-Api-Key` header, and the field
+     * mask is mandatory (the API returns an error without one).
+     */
+    private function routesClient(): PendingRequest
+    {
+        $client = $this->client(GeolocationConfig::string('geolocation.services.google.routes_url', config('geolocation.services.google.routes_url'), 'https://routes.googleapis.com'))
+            ->withHeaders(['X-Goog-FieldMask' => self::ROUTE_MATRIX_FIELDS]);
+
+        $key = $this->key();
+
+        return $key !== null ? $client->withHeaders(['X-Goog-Api-Key' => $key]) : $client;
+    }
+
+    private function client(string $baseUrl): PendingRequest
+    {
+        return Http::baseUrl(rtrim($baseUrl, '/'))
             ->timeout(GeolocationConfig::timeout($this->override('timeout')))
             ->retry(
                 Config::integer('geolocation.services.google.retry', 3, min: 0),

@@ -6,6 +6,19 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+### Changed
+
+- **BREAKING:** Google distances (`distance()`, `distanceBetween()`, `distanceMatrix()`) now call
+  the Routes API's `computeRouteMatrix` instead of the legacy Distance Matrix API, which Google
+  closed to new Cloud projects. Enable the **Routes API** on the key in `GOOGLE_MAPS_API_KEY`
+  before you upgrade. The key now travels in the `X-Goog-Api-Key` header, and the new
+  `services.google.routes_url` (`GOOGLE_ROUTES_URL`) sets the endpoint. When the Routes API
+  rejects a request (API not enabled, quota, invalid argument), the provider throws a redacted
+  `ProviderUnavailableException` that names the status, where it used to return a silent `null`.
+  The pipeline skips the provider, and `distanceMatrix()` degrades to `null` cells.
+  `humanReadableDistance` and `humanReadableDuration` now come from the Routes API's localized
+  text, so their wording can differ from Distance Matrix's.
+
 ### Fixed
 
 - `CoordinatesCast` (and so every `HasLocation` model) no longer caches the `Coordinates` it

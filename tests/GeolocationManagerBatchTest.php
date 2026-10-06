@@ -29,13 +29,13 @@ it('builds a distance matrix via the google provider', function () {
     config()->set('geolocation.pipeline', ['google']);
 
     Http::fake([
-        '*distancematrix*' => Http::response([
-            'rows' => [
-                ['elements' => [
-                    ['status' => 'OK', 'distance' => ['text' => '5 km', 'value' => 5000], 'duration' => ['text' => '6 mins', 'value' => 360]],
-                    ['status' => 'ZERO_RESULTS'],
-                ]],
+        'routes.googleapis.com/*' => Http::response([
+            [
+                'originIndex' => 0, 'destinationIndex' => 0, 'status' => [], 'condition' => 'ROUTE_EXISTS',
+                'distanceMeters' => 5000, 'duration' => '360s',
+                'localizedValues' => ['distance' => ['text' => '5 km'], 'duration' => ['text' => '6 mins']],
             ],
+            ['originIndex' => 0, 'destinationIndex' => 1, 'status' => [], 'condition' => 'ROUTE_NOT_FOUND'],
         ]),
     ]);
 
