@@ -6,6 +6,8 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+## 2.0.1 - 2026-10-06
+
 ### Fixed
 
 - `Geolocation::fake()` now knows the providers registered with `extend()` before it was
