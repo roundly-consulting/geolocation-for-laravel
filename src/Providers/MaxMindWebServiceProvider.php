@@ -16,6 +16,7 @@ use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
+use RoundlyConsulting\Geolocation\Support\RetryPolicy;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
@@ -92,6 +93,7 @@ final class MaxMindWebServiceProvider implements GeolocationProvider
             ->retry(
                 Config::integer('geolocation.services.maxmind_web.retry', 2, min: 0),
                 Config::integer('geolocation.services.maxmind_web.retry_delay', 100, min: 0),
+                when: RetryPolicy::transient(...),
                 throw: false,
             )
             ->acceptJson();

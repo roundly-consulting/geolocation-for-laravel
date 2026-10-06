@@ -16,6 +16,7 @@ use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
+use RoundlyConsulting\Geolocation\Support\RetryPolicy;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 final class IpInfoProvider implements GeolocationProvider
@@ -79,6 +80,7 @@ final class IpInfoProvider implements GeolocationProvider
             ->retry(
                 Config::integer('geolocation.services.ipinfo.retry', 3, min: 0),
                 Config::integer('geolocation.services.ipinfo.retry_delay', 100, min: 0),
+                when: RetryPolicy::transient(...),
                 throw: false,
             )
             ->acceptJson();

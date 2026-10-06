@@ -11,6 +11,9 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 - `CoordinatesCast` (and so every `HasLocation` model) no longer caches the `Coordinates` it
   returned: reading `coordinates` before updating `latitude`/`longitude` used to merge the old
   point back on save and silently drop the update.
+- The HTTP providers (`google`, `ipinfo`, `ip2location`, `maxmind_web`) retry only connection
+  errors and `5xx` responses. A `4xx` (bad key, unknown IP, `429`) is no longer re-sent up to
+  `services.<provider>.retry` times inside the same rate-limit slot.
 
 ## 1.0.0 - 2026-10-03
 

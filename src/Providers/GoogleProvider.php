@@ -23,6 +23,7 @@ use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 use RoundlyConsulting\Geolocation\Support\Decimal;
 use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
+use RoundlyConsulting\Geolocation\Support\RetryPolicy;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
@@ -254,6 +255,7 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
             ->retry(
                 Config::integer('geolocation.services.google.retry', 3, min: 0),
                 Config::integer('geolocation.services.google.retry_delay', 100, min: 0),
+                when: RetryPolicy::transient(...),
                 throw: false,
             )
             ->acceptJson();

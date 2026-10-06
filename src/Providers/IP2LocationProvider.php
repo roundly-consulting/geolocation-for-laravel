@@ -16,6 +16,7 @@ use RoundlyConsulting\Geolocation\Enum\GeolocationType;
 use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
 use RoundlyConsulting\Geolocation\GeolocationProvider;
 use RoundlyConsulting\Geolocation\Support\GeolocationConfig;
+use RoundlyConsulting\Geolocation\Support\RetryPolicy;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
@@ -118,6 +119,7 @@ final class IP2LocationProvider implements GeolocationProvider
             ->retry(
                 Config::integer('geolocation.services.ip2location.retry', 2, min: 0),
                 Config::integer('geolocation.services.ip2location.retry_delay', 100, min: 0),
+                when: RetryPolicy::transient(...),
                 throw: false,
             )
             ->acceptJson();
