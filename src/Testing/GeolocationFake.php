@@ -42,12 +42,18 @@ final class GeolocationFake extends GeolocationManager
 
     /**
      * @param  array<string, Location>  $results
+     * @param  GeolocationManager|null  $manager  the manager being faked; the providers it
+     *                                            registered via extend() stay registered here
      */
-    public function __construct(Container $container, array $results = [])
+    public function __construct(Container $container, array $results = [], ?GeolocationManager $manager = null)
     {
         parent::__construct($container);
 
         $this->state = new GeolocationFakeState($results);
+
+        if ($manager instanceof GeolocationManager) {
+            $this->inheritExtensionsFrom($manager);
+        }
     }
 
     /**

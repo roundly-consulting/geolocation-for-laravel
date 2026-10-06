@@ -367,6 +367,36 @@ it('accepts a pin to a runtime-registered provider', function () {
     $fake->assertProviderUsed('custom');
 });
 
+it('keeps providers registered with extend() before fake()', function () {
+    Geolocation::extend('custom', fn () => new stdClass);
+    $fake = Geolocation::fake(['1.1.1.1' => fakeLocation()]);
+
+    expect(Geolocation::provider('custom')->locateIp('1.1.1.1'))->toBeInstanceOf(Location::class)
+        ->and(Geolocation::using('custom')->locateIp('1.1.1.1'))->toBeInstanceOf(Location::class)
+        ->and(Geolocation::withToken('custom', 'k')->withConfig('custom', ['a' => 1])->locateIp('1.1.1.1'))
+        ->toBeInstanceOf(Location::class)
+        ->and(fn () => Geolocation::provider('unknown')->locateIp('1.1.1.1'))
+        ->toThrow(UnknownProviderException::class, '[unknown]')
+        ->and(fn () => Geolocation::withToken('unknown', 'k'))
+        ->toThrow(UnknownProviderException::class, '[unknown]');
+
+    $fake->assertProviderUsed('custom');
+    $fake->assertProviderNotUsed('unknown');
+});
+
+it('keeps extended providers when faking an already faked manager', function () {
+    Geolocation::extend('before', fn () => new stdClass);
+    Geolocation::fake();
+    Geolocation::extend('after', fn () => new stdClass);
+
+    $fake = Geolocation::fake();
+    Geolocation::provider('before')->locateIp('1.1.1.1');
+    Geolocation::using('after')->locateIp('1.1.1.1');
+
+    $fake->assertProviderUsed('before');
+    $fake->assertProviderUsed('after');
+});
+
 it('records a blank path as the configured one, like the real refresh', function (): void {
     config()->set('geolocation.services.maxmind_database.path', '/tmp/conf.mmdb');
     $fake = Geolocation::fake();

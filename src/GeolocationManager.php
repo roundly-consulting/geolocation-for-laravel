@@ -344,6 +344,17 @@ class GeolocationManager
     }
 
     /**
+     * Take over the providers $manager registered via extend(), keeping any this one already
+     * has — how Geolocation::fake() keeps the drivers packages register at boot.
+     *
+     * @internal
+     */
+    protected function inheritExtensionsFrom(self $manager): void
+    {
+        $this->extensions += $manager->extensions;
+    }
+
+    /**
      * Run a resolution with this instance's overrides active for its providers, restored
      * afterwards even when a provider throws.
      *

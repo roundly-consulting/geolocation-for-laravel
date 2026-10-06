@@ -48,13 +48,17 @@ final class Geolocation extends Facade
     /**
      * Swap the manager for a recording, network-free fake — behind the facade and in the
      * container, so an injected GeolocationManager (and `$request->location()`) is faked too.
-     * Seed canned results per IP, address or "lat,lng" key via $results.
+     * Seed canned results per IP, address or "lat,lng" key via $results. Providers already
+     * registered with extend() stay registered on the fake.
      *
      * @param  array<string, Location>  $results
      */
     public static function fake(array $results = []): GeolocationFake
     {
-        $fake = app()->make(GeolocationFake::class, ['results' => $results]);
+        $fake = app()->make(GeolocationFake::class, [
+            'results' => $results,
+            'manager' => app()->make(GeolocationManager::class),
+        ]);
 
         self::swap($fake);
 

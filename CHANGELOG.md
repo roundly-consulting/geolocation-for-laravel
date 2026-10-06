@@ -6,6 +6,12 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+### Fixed
+
+- `Geolocation::fake()` now knows the providers registered with `extend()` before it was
+  called (such as a driver a package registers at boot), so `provider()`, `using()`,
+  `withToken()` and `withConfig()` accept them on the fake as the real manager does.
+
 ## 2.0.0 - 2026-10-06
 
 ### Added
