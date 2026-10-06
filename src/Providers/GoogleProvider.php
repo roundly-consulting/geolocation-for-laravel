@@ -175,6 +175,8 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
             return null;
         }
 
+        $this->ensureGeocodingAccepted($response);
+
         /** @var array<string, mixed>|null $result */
         $result = $response->json('results.0');
 
@@ -183,6 +185,29 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
         }
 
         return $this->toLocation($result);
+    }
+
+    /**
+     * The Geocoding API reports a rejected request (denied or restricted key, exhausted quota,
+     * malformed query) as HTTP 200 with a top-level status and no results — which would
+     * otherwise read as "no match". Surface it as an unavailable provider instead, so the
+     * pipeline moves on and LocationResolutionFailed names the reason.
+     */
+    private function ensureGeocodingAccepted(Response $response): void
+    {
+        $status = $response->json('status');
+
+        if (! is_string($status) || in_array($status, ['OK', 'ZERO_RESULTS'], true)) {
+            return;
+        }
+
+        $message = $response->json('error_message');
+
+        throw ProviderUnavailableException::rejected(
+            'google',
+            is_string($message) && $message !== '' ? "{$status}: {$message}" : $status,
+            [$this->key()],
+        );
     }
 
     /**

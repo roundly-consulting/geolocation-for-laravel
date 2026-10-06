@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Distance;
@@ -10,6 +11,9 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+use RoundlyConsulting\Geolocation\Events\LocationResolutionFailed;
+use RoundlyConsulting\Geolocation\Exceptions\ProviderUnavailableException;
+use RoundlyConsulting\Geolocation\Facades\Geolocation;
 use RoundlyConsulting\Geolocation\Providers\GoogleProvider;
 
 it('returns distance between two locations', function (): void {
@@ -192,4 +196,37 @@ it('never sends coordinates in scientific notation', function (): void {
     Http::assertSent(fn ($request): bool => ($request->data()['origins'] ?? null) === '0.00001,0'
         && ($request->data()['destinations'] ?? null) === '-0.00005,0.00003');
     Http::assertNotSent(fn ($request): bool => str_contains(urldecode($request->url()), 'E-'));
+});
+
+it('reports a geocoding request google rejected as an unavailable provider', function (string $status): void {
+    config()->set('geolocation.services.google.key', 'GOOGLE-SECRET');
+    config()->set('geolocation.pipeline', ['google']);
+    Event::fake([LocationResolutionFailed::class]);
+    Http::fake([
+        '*/geocode/json*' => Http::response([
+            'status' => $status,
+            'error_message' => 'The provided API key GOOGLE-SECRET is not allowed.',
+            'results' => [],
+        ]),
+    ]);
+
+    expect(Geolocation::locateAddress('1 Main St'))->toBeNull();
+
+    Event::assertDispatched(LocationResolutionFailed::class, fn (LocationResolutionFailed $event): bool => $event->provider === 'google'
+        && $event->error instanceof ProviderUnavailableException
+        && str_contains($event->error->getMessage(), "[google] is unavailable: {$status}: The provided API key [redacted] is not allowed.")
+        && ! str_contains($event->error->getMessage(), 'GOOGLE-SECRET'));
+})->with(['REQUEST_DENIED', 'INVALID_REQUEST', 'OVER_QUERY_LIMIT', 'OVER_DAILY_LIMIT', 'UNKNOWN_ERROR']);
+
+it('treats a geocoding ZERO_RESULTS status as a plain miss', function (): void {
+    Http::fake(['*/geocode/json*' => Http::response(['status' => 'ZERO_RESULTS', 'results' => []])]);
+
+    expect((new GoogleProvider)->locate(GeolocationQuery::forAddress('nowhere')))->toBeNull();
+});
+
+it('names the bare status when google sends no error message', function (): void {
+    Http::fake(['*/geocode/json*' => Http::response(['status' => 'REQUEST_DENIED', 'results' => []])]);
+
+    expect(fn () => (new GoogleProvider)->locate(GeolocationQuery::forAddress('1 Main St')))
+        ->toThrow(ProviderUnavailableException::class, 'Geolocation provider [google] is unavailable: REQUEST_DENIED');
 });
