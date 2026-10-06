@@ -28,48 +28,17 @@ use SensitiveParameter;
 final class GeolocationFake extends GeolocationManager
 {
     /**
-     * @var array<string, Location>
+     * The seeds and recordings, shared with every scoped copy this fake hands out.
      */
-    private array $results;
-
-    private ?Location $default = null;
-
-    private ?Distance $distance = null;
+    private readonly GeolocationFakeState $state;
 
     /**
-     * @var list<string>
-     */
-    private array $located = [];
-
-    /**
-     * The provider names pinned via using()/provider() for the next call, recorded when that
-     * call (a lookup, batch, distance or matrix) runs so they can be asserted on.
+     * The provider names this (scoped copy of the) fake is pinned to via using()/provider(),
+     * recorded on every call made through it — null on the facade's own, unscoped fake.
      *
-     * @var list<string>
+     * @var list<string>|null
      */
-    private array $pinned = [];
-
-    /**
-     * @var list<string>
-     */
-    private array $providersUsed = [];
-
-    /**
-     * @var list<DistanceQuery>
-     */
-    private array $distances = [];
-
-    /**
-     * @var list<array{edition: string, path: string}>
-     */
-    private array $databaseUpdates = [];
-
-    /**
-     * @var list<GeolocationQuery|DistanceQuery>
-     */
-    private array $forgotten = [];
-
-    private int $flushes = 0;
+    private ?array $pinned = null;
 
     /**
      * @param  array<string, Location>  $results
@@ -78,7 +47,7 @@ final class GeolocationFake extends GeolocationManager
     {
         parent::__construct($container);
 
-        $this->results = $results;
+        $this->state = new GeolocationFakeState($results);
     }
 
     /**
@@ -86,7 +55,7 @@ final class GeolocationFake extends GeolocationManager
      */
     public function seed(string $key, Location $location): self
     {
-        $this->results[$key] = $location;
+        $this->state->results[$key] = $location;
 
         return $this;
     }
@@ -96,48 +65,31 @@ final class GeolocationFake extends GeolocationManager
      */
     public function seedDefault(?Location $location): self
     {
-        $this->default = $location;
+        $this->state->default = $location;
 
         return $this;
     }
 
     public function seedDistance(?Distance $distance): self
     {
-        $this->distance = $distance;
+        $this->state->distance = $distance;
 
         return $this;
     }
 
     public function locate(GeolocationQuery $query): ?Location
     {
-        $this->consumePinned();
+        $this->recordPinned();
 
         return $this->lookup($query);
     }
 
-    /**
-     * @param  list<string>  $ips
-     * @return array<string, Location|null>
-     */
-    public function batch(array $ips): array
-    {
-        $this->consumePinned();
-
-        $results = [];
-
-        foreach ($ips as $ip) {
-            $results[$ip] = $this->lookup(GeolocationQuery::forIp($ip));
-        }
-
-        return $results;
-    }
-
     public function distance(DistanceQuery $query): ?Distance
     {
-        $this->consumePinned();
-        $this->distances[] = $query;
+        $this->recordPinned();
+        $this->state->distances[] = $query;
 
-        return $this->distance;
+        return $this->state->distance;
     }
 
     /**
@@ -149,7 +101,7 @@ final class GeolocationFake extends GeolocationManager
         array $destinations,
         DistanceType $type = DistanceType::Driving,
     ): DistanceMatrix {
-        $this->consumePinned();
+        $this->recordPinned();
 
         return new DistanceMatrix($origins, $destinations, []);
     }
@@ -165,21 +117,21 @@ final class GeolocationFake extends GeolocationManager
             : GeolocationConfig::string('geolocation.services.maxmind_database.edition', config('geolocation.services.maxmind_database.edition'), 'GeoLite2-City');
         $path = $path ?? (string) config('geolocation.services.maxmind_database.path', '');
 
-        $this->databaseUpdates[] = ['edition' => $edition, 'path' => $path];
+        $this->state->databaseUpdates[] = ['edition' => $edition, 'path' => $path];
 
         return $path;
     }
 
     public function forget(GeolocationQuery|DistanceQuery $query): bool
     {
-        $this->forgotten[] = $query;
+        $this->state->forgotten[] = $query;
 
         return true;
     }
 
     public function flushCache(): void
     {
-        $this->flushes++;
+        $this->state->flushes++;
     }
 
     public function locateIp(string $ip): ?Location
@@ -209,14 +161,18 @@ final class GeolocationFake extends GeolocationManager
     }
 
     /**
-     * Pins the names for the next call — the fake runs no provider, so this is what
-     * assertProviderUsed() checks.
+     * A scoped copy pinned to these names, like the real manager's: the scope applies to the
+     * calls made through the copy only and never leaks into a later call on the facade. The
+     * copy records into this fake, and since the fake runs no provider, the pin is what
+     * assertProviderUsed() checks. A name that is not registered throws
+     * UnknownProviderException when a call runs, as it does for real.
      */
     public function using(string ...$providers): GeolocationManager
     {
-        $this->pinned = array_values($providers);
+        $scoped = clone $this;
+        $scoped->pinned = array_values($providers);
 
-        return $this;
+        return $scoped;
     }
 
     public function provider(string $name): GeolocationManager
@@ -224,8 +180,14 @@ final class GeolocationFake extends GeolocationManager
         return $this->using($name);
     }
 
+    /**
+     * The fake runs no provider, so the token goes nowhere — but an unregistered name throws
+     * UnknownProviderException, as it does for real.
+     */
     public function withToken(string $provider, #[SensitiveParameter] string $token): GeolocationManager
     {
+        $this->ensureRegistered($provider);
+
         return $this;
     }
 
@@ -235,10 +197,14 @@ final class GeolocationFake extends GeolocationManager
     }
 
     /**
+     * A no-op like withToken(), refusing an unregistered name the same way.
+     *
      * @param  array<string, mixed>  $overrides
      */
     public function withConfig(string $provider, array $overrides): GeolocationManager
     {
+        $this->ensureRegistered($provider);
+
         return $this;
     }
 
@@ -246,7 +212,7 @@ final class GeolocationFake extends GeolocationManager
     {
         Assert::assertContains(
             $key,
-            $this->located,
+            $this->state->located,
             "Failed asserting that [{$key}] was located.",
         );
     }
@@ -255,7 +221,7 @@ final class GeolocationFake extends GeolocationManager
     {
         Assert::assertSame(
             [],
-            $this->located,
+            $this->state->located,
             'Failed asserting that nothing was located.',
         );
     }
@@ -268,7 +234,7 @@ final class GeolocationFake extends GeolocationManager
     {
         Assert::assertContains(
             $name,
-            $this->providersUsed,
+            $this->state->providersUsed,
             "Failed asserting that provider [{$name}] was used.",
         );
     }
@@ -277,7 +243,7 @@ final class GeolocationFake extends GeolocationManager
     {
         Assert::assertNotContains(
             $name,
-            $this->providersUsed,
+            $this->state->providersUsed,
             "Failed asserting that provider [{$name}] was not used.",
         );
     }
@@ -292,7 +258,7 @@ final class GeolocationFake extends GeolocationManager
         ?DistanceType $type = null,
     ): void {
         $matching = array_filter(
-            $this->distances,
+            $this->state->distances,
             static fn (DistanceQuery $query): bool => ($from === null || $query->from()->toArray() === $from->toArray())
                 && ($to === null || $query->to()->toArray() === $to->toArray())
                 && ($type === null || $query->type === $type),
@@ -307,8 +273,8 @@ final class GeolocationFake extends GeolocationManager
     {
         Assert::assertSame(
             [],
-            $this->distances,
-            sprintf('Failed asserting that no distance was requested (%d were).', count($this->distances)),
+            $this->state->distances,
+            sprintf('Failed asserting that no distance was requested (%d were).', count($this->state->distances)),
         );
     }
 
@@ -318,7 +284,7 @@ final class GeolocationFake extends GeolocationManager
     public function assertDatabaseUpdated(?string $edition = null): void
     {
         $matching = array_filter(
-            $this->databaseUpdates,
+            $this->state->databaseUpdates,
             static fn (array $update): bool => $edition === null || $update['edition'] === $edition,
         );
 
@@ -331,7 +297,7 @@ final class GeolocationFake extends GeolocationManager
     {
         Assert::assertSame(
             [],
-            $this->databaseUpdates,
+            $this->state->databaseUpdates,
             'Failed asserting that the MaxMind database was not updated.',
         );
     }
@@ -342,7 +308,7 @@ final class GeolocationFake extends GeolocationManager
     public function assertForgotten(GeolocationQuery|DistanceQuery $query): void
     {
         $matching = array_filter(
-            $this->forgotten,
+            $this->state->forgotten,
             static fn (GeolocationQuery|DistanceQuery $forgotten): bool => $forgotten::class === $query::class
                 && $forgotten->cacheKey() === $query->cacheKey(),
         );
@@ -354,33 +320,40 @@ final class GeolocationFake extends GeolocationManager
     {
         Assert::assertSame(
             [],
-            $this->forgotten,
+            $this->state->forgotten,
             'Failed asserting that nothing was forgotten.',
         );
     }
 
     public function assertCacheFlushed(): void
     {
-        Assert::assertGreaterThan(0, $this->flushes, 'Failed asserting that the geolocation cache was flushed.');
+        Assert::assertGreaterThan(0, $this->state->flushes, 'Failed asserting that the geolocation cache was flushed.');
     }
 
     public function assertCacheNotFlushed(): void
     {
-        Assert::assertSame(0, $this->flushes, 'Failed asserting that the geolocation cache was not flushed.');
+        Assert::assertSame(0, $this->state->flushes, 'Failed asserting that the geolocation cache was not flushed.');
     }
 
-    private function consumePinned(): void
+    private function recordPinned(): void
     {
-        array_push($this->providersUsed, ...$this->pinned);
-        $this->pinned = [];
+        if ($this->pinned === null) {
+            return;
+        }
+
+        foreach ($this->pinned as $name) {
+            $this->ensureRegistered($name);
+        }
+
+        array_push($this->state->providersUsed, ...$this->pinned);
     }
 
     private function lookup(GeolocationQuery $query): ?Location
     {
         $key = $this->keyFor($query);
-        $this->located[] = $key;
+        $this->state->located[] = $key;
 
-        return $this->results[$key] ?? $this->default;
+        return $this->state->results[$key] ?? $this->state->default;
     }
 
     private function keyFor(GeolocationQuery $query): string

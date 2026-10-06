@@ -314,14 +314,25 @@ class GeolocationManager
      */
     public function withConfig(string $provider, array $overrides): self
     {
-        if (! isset($this->extensions[$provider]) && ! array_key_exists($provider, $this->configuredProviders())) {
-            throw UnknownProviderException::named($provider);
-        }
+        $this->ensureRegistered($provider);
 
         $scoped = clone $this;
         $scoped->providerOverrides[$provider] = array_merge($this->providerOverrides[$provider] ?? [], $overrides);
 
         return $scoped;
+    }
+
+    /**
+     * Refuse a provider name that is neither in the "providers" map nor registered via
+     * extend(). Protected so the fake applies the very same rule.
+     *
+     * @throws UnknownProviderException
+     */
+    protected function ensureRegistered(string $provider): void
+    {
+        if (! isset($this->extensions[$provider]) && ! array_key_exists($provider, $this->configuredProviders())) {
+            throw UnknownProviderException::named($provider);
+        }
     }
 
     /**

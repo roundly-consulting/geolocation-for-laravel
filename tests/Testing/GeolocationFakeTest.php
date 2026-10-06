@@ -12,6 +12,7 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+use RoundlyConsulting\Geolocation\Exceptions\UnknownProviderException;
 use RoundlyConsulting\Geolocation\Facades\Geolocation;
 use RoundlyConsulting\Geolocation\GeolocationManager;
 
@@ -99,11 +100,11 @@ it('records a provider pinned for a distance, a matrix or a batch', function () 
     $fake = Geolocation::fake();
 
     Geolocation::provider('google')->distanceBetween(new Coordinates(1, 2), new Coordinates(3, 4));
-    Geolocation::provider('google_places')->distanceMatrix([new Coordinates(1, 2)], [new Coordinates(3, 4)]);
+    Geolocation::provider('maxmind_web')->distanceMatrix([new Coordinates(1, 2)], [new Coordinates(3, 4)]);
     Geolocation::provider('maxmind_database')->batch(['1.1.1.1', '2.2.2.2']);
 
     $fake->assertProviderUsed('google');
-    $fake->assertProviderUsed('google_places');
+    $fake->assertProviderUsed('maxmind_web');
     $fake->assertProviderUsed('maxmind_database');
     $fake->assertLocated('2.2.2.2');
 });
@@ -274,4 +275,94 @@ it('keys a tiny coordinate lookup as a plain decimal', function (): void {
     Geolocation::locateCoordinates(new Coordinates(0.00001, 0.0));
 
     $fake->assertLocated('0.00001,0');
+});
+
+it('never lets an unchained provider() pin leak into the next call', function () {
+    $fake = Geolocation::fake();
+
+    // In production the scoped copy is discarded; the facade call after it is unscoped.
+    Geolocation::provider('ipinfo');
+    Geolocation::locateIp('1.1.1.1');
+
+    $fake->assertProviderNotUsed('ipinfo');
+    $fake->assertLocated('1.1.1.1');
+});
+
+it('hands out a scoped copy that records into the shared fake', function () {
+    $fake = Geolocation::fake();
+
+    $scoped = Geolocation::using('maxmind_database', 'ipinfo');
+    $fake->seed('9.9.9.9', fakeLocation('Seeded later'));
+
+    expect($scoped)->not->toBe($fake)
+        ->and($scoped)->toBeInstanceOf(GeolocationManager::class)
+        ->and($scoped->locateIp('9.9.9.9')?->city)->toBe('Seeded later');
+
+    Geolocation::locateIp('1.1.1.1');
+
+    $fake->assertProviderUsed('maxmind_database');
+    $fake->assertProviderUsed('ipinfo');
+    $fake->assertLocated('9.9.9.9');
+    $fake->assertLocated('1.1.1.1');
+    Geolocation::assertProviderUsed('ipinfo');
+});
+
+it('keeps the pin for every call made through the scoped copy', function () {
+    $fake = Geolocation::fake();
+    $scoped = Geolocation::provider('ipinfo');
+
+    $scoped->locateIp('1.1.1.1');
+    $scoped->distanceBetween(new Coordinates(1, 2), new Coordinates(3, 4));
+
+    $fake->assertProviderUsed('ipinfo');
+    $fake->assertLocated('1.1.1.1');
+    $fake->assertDistanceRequested();
+});
+
+it('refuses an override for a provider that is not registered, like the real manager', function (Closure $override) {
+    Geolocation::fake();
+
+    expect($override)->toThrow(UnknownProviderException::class, '[ip2locaton]');
+})->with([
+    'withToken' => [fn () => Geolocation::withToken('ip2locaton', 'k')],
+    'withConfig' => [fn () => Geolocation::withConfig('ip2locaton', ['token' => 'k'])],
+]);
+
+it('accepts an override for a configured or extended provider', function () {
+    $fake = Geolocation::fake(['1.1.1.1' => fakeLocation()]);
+    Geolocation::extend('custom', fn () => new stdClass);
+
+    expect(Geolocation::withToken('custom', 'k')->withConfig('ip2location', ['a' => 1])->locateIp('1.1.1.1'))
+        ->toBeInstanceOf(Location::class);
+
+    $fake->assertLocated('1.1.1.1');
+});
+
+it('refuses a call pinned to a provider that is not registered, like the real manager', function (Closure $call) {
+    $fake = Geolocation::fake();
+
+    expect($call)->toThrow(UnknownProviderException::class, '[ip2locaton]');
+
+    $fake->assertProviderNotUsed('ip2locaton');
+})->with([
+    'lookup' => [fn () => Geolocation::using('ip2locaton')->locateIp('1.1.1.1')],
+    'distance' => [fn () => Geolocation::provider('ip2locaton')->distanceBetween(new Coordinates(1, 2), new Coordinates(3, 4))],
+    'matrix' => [fn () => Geolocation::provider('ip2locaton')->distanceMatrix([new Coordinates(1, 2)], [new Coordinates(3, 4)])],
+]);
+
+it('answers null per ip for a batch pinned to an unregistered provider, like the real batch', function () {
+    $fake = Geolocation::fake(['1.1.1.1' => fakeLocation()]);
+
+    expect(Geolocation::provider('ip2locaton')->batch(['1.1.1.1']))->toBe(['1.1.1.1' => null]);
+
+    $fake->assertProviderNotUsed('ip2locaton');
+});
+
+it('accepts a pin to a runtime-registered provider', function () {
+    $fake = Geolocation::fake();
+    Geolocation::extend('custom', fn () => new stdClass);
+
+    Geolocation::provider('custom')->locateIp('1.1.1.1');
+
+    $fake->assertProviderUsed('custom');
 });

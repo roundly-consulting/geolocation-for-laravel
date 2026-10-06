@@ -41,6 +41,13 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
   and merges the cells back by their original indices. An oversized grid used to go out as one
   request that Google refused, which left every cell `null`. A tile that fails now leaves only
   its own cells `null`.
+- Under `Geolocation::fake()`, `provider()` / `using()` return a scoped copy, as the real manager
+  does. An unchained pin no longer leaks into the next facade call or satisfies
+  `assertProviderUsed()`. Calls made through the copy still record on the fake.
+- The fake refuses provider names that are not registered, as the real manager does.
+  `withToken()` / `withConfig()` throw `UnknownProviderException`, and so does a call pinned to an
+  unknown name through `using()` / `provider()`. A pinned `batch()` answers `null` per IP, as it
+  does for real.
 
 ## 1.0.0 - 2026-10-03
 
