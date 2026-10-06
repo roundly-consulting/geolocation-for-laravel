@@ -6,6 +6,12 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+### Fixed
+
+- `CoordinatesCast` (and so every `HasLocation` model) no longer caches the `Coordinates` it
+  returned: reading `coordinates` before updating `latitude`/`longitude` used to merge the old
+  point back on save and silently drop the update.
+
 ## 1.0.0 - 2026-10-03
 
 Initial public release.

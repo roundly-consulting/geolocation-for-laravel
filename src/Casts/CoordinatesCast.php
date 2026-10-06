@@ -19,6 +19,12 @@ use RoundlyConsulting\Geolocation\Exceptions\InvalidCoordinatesException;
  */
 final class CoordinatesCast implements CastsAttributes
 {
+    /**
+     * The point is derived from two columns: a cached object would go stale when either
+     * column changes, and save() would merge it back over the newer values.
+     */
+    public bool $withoutObjectCaching = true;
+
     public function __construct(
         private readonly string $latitudeColumn = 'latitude',
         private readonly string $longitudeColumn = 'longitude',

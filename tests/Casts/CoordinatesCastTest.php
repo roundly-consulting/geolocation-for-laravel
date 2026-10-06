@@ -111,3 +111,25 @@ it('finds rows on the far side of a pole with the radius scope', function () {
 
     expect($names)->toBe(['Across the pole']);
 });
+
+it('keeps an update to the columns after the coordinates were read', function () {
+    $place = Place::query()->create(['name' => 'HQ', 'latitude' => 1.0, 'longitude' => 2.0]);
+
+    // Reading the cast first used to cache the old point, which save() merged back over
+    // the new columns, silently losing the update.
+    expect($place->coordinates?->latitude)->toBe(1.0);
+
+    $place->update(['latitude' => 10.0, 'longitude' => 20.0]);
+
+    expect($place->fresh()?->coordinates?->toArray())->toBe(['latitude' => 10.0, 'longitude' => 20.0])
+        ->and($place->getAttribute('latitude'))->toEqual(10.0);
+});
+
+it('reflects a column written after the coordinates were read', function () {
+    $place = Place::query()->create(['name' => 'HQ', 'latitude' => 1.0, 'longitude' => 2.0]);
+    expect($place->coordinates?->latitude)->toBe(1.0);
+
+    $place->latitude = 10.0;
+
+    expect($place->coordinates?->latitude)->toBe(10.0);
+});
