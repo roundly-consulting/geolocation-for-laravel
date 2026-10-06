@@ -107,74 +107,114 @@ final readonly class UpdateDatabaseAction
     }
 
     /**
-     * Download the .tar.gz archive to a temporary file and return its path.
+     * Stream the .tar.gz archive to a temporary file and return its path. The body goes
+     * straight to disk (a GeoLite2-City archive is tens of megabytes), and the file is
+     * removed again when the download fails.
      */
     private function download(string $baseUrl, int $timeout, string $edition, #[SensitiveParameter] string $licenseKey): string
     {
-        $response = $this->http
-            ->timeout($timeout)
-            ->get($baseUrl, [
-                'edition_id' => $edition,
-                'license_key' => $licenseKey,
-                'suffix' => 'tar.gz',
-            ])
-            ->throw();
-
         $temp = tempnam(sys_get_temp_dir(), 'mmdb');
 
         if ($temp === false) {
             throw new RuntimeException('Unable to create a temporary file for the download.');
         }
 
-        file_put_contents($temp, $response->body());
+        try {
+            $this->http
+                ->timeout($timeout)
+                ->sink($temp)
+                ->get($baseUrl, [
+                    'edition_id' => $edition,
+                    'license_key' => $licenseKey,
+                    'suffix' => 'tar.gz',
+                ])
+                ->throw();
+        } catch (Throwable $e) {
+            @unlink($temp);
+
+            throw $e;
+        }
 
         return $temp;
     }
 
     /**
-     * Unpack the gzipped tarball, locate the .mmdb member and swap it in at the destination.
+     * Unpack the gzipped tarball, locate the .mmdb member and swap it in at the destination —
+     * file to file throughout, so memory stays flat whatever the database size.
      */
     private function extract(string $archive, string $edition, string $destination): void
     {
         $this->ensureDirectory($destination);
 
         $tarPath = $archive.'.tar';
-        $decoded = @gzdecode((string) file_get_contents($archive));
-
-        if ($decoded === false) {
-            throw new RuntimeException('The downloaded archive is not valid gzip data.');
-        }
-
-        file_put_contents($tarPath, $decoded);
 
         try {
-            $contents = $this->locateMmdb(new PharData($tarPath), $edition);
+            $this->gunzip($archive, $tarPath);
 
-            if ($contents === null) {
+            $member = $this->locateMmdb(new PharData($tarPath), $edition);
+
+            if ($member === null) {
                 throw new RuntimeException("No .mmdb file was found inside the [{$edition}] archive.");
             }
 
-            $this->replace($destination, $contents);
+            $this->replace($destination, $member);
         } finally {
             @unlink($tarPath);
         }
     }
 
     /**
-     * Write to a temporary file beside the destination, then rename() it over the live
-     * database: the swap is atomic on one filesystem, so a lookup running meanwhile reads
-     * either the old file or the new one — never a half-written one.
+     * Decompress the archive to a plain tar in 1 MB chunks. gzopen() would read a non-gzip
+     * file through unchanged, so the gzip magic bytes are checked first.
      */
-    private function replace(string $destination, string $contents): void
+    private function gunzip(string $archive, string $tarPath): void
+    {
+        $magic = (string) file_get_contents($archive, length: 2);
+        $in = $magic === "\x1f\x8b" ? @gzopen($archive, 'rb') : false;
+
+        if ($in === false) {
+            throw new RuntimeException('The downloaded archive is not valid gzip data.');
+        }
+
+        $out = fopen($tarPath, 'wb');
+
+        try {
+            if ($out === false) {
+                throw new RuntimeException("Unable to write the unpacked archive to [{$tarPath}].");
+            }
+
+            while (! gzeof($in)) {
+                $chunk = @gzread($in, 1 << 20);
+
+                if ($chunk === false || fwrite($out, $chunk) !== strlen($chunk)) {
+                    throw new RuntimeException('The downloaded archive could not be decompressed.');
+                }
+            }
+        } finally {
+            gzclose($in);
+
+            if (is_resource($out)) {
+                fclose($out);
+            }
+        }
+    }
+
+    /**
+     * Copy the member to a temporary file beside the destination (a stream copy out of the
+     * tar, never a string), then rename() it over the live database: the swap is atomic on
+     * one filesystem, so a lookup running meanwhile reads either the old file or the new one —
+     * never a half-written one.
+     */
+    private function replace(string $destination, PharFileInfo $member): void
     {
         $temporary = $destination.'.tmp'.Str::random(8);
 
         try {
-            if (file_put_contents($temporary, $contents) !== strlen($contents)) {
+            if (! @copy($member->getPathname(), $temporary) || filesize($temporary) !== $member->getSize()) {
                 throw new RuntimeException("Unable to write the database to [{$temporary}].");
             }
 
-            if (! rename($temporary, $destination)) {
+            if (! @rename($temporary, $destination)) {
                 throw new RuntimeException("Unable to move the database into place at [{$destination}].");
             }
         } finally {
@@ -184,7 +224,7 @@ final readonly class UpdateDatabaseAction
         }
     }
 
-    private function locateMmdb(PharData $phar, string $edition): ?string
+    private function locateMmdb(PharData $phar, string $edition): ?PharFileInfo
     {
         $expected = "{$edition}.mmdb";
         $fallback = null;
@@ -194,11 +234,11 @@ final readonly class UpdateDatabaseAction
             $name = $file->getFilename();
 
             if ($name === $expected) {
-                return $file->getContent();
+                return $file;
             }
 
             if ($fallback === null && str_ends_with($name, '.mmdb')) {
-                $fallback = $file->getContent();
+                $fallback = $file;
             }
         }
 

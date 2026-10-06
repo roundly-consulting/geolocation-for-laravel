@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use RoundlyConsulting\Geolocation\Actions\UpdateDatabaseAction;
@@ -173,3 +175,103 @@ it('wraps a destination that cannot be replaced', function (): void {
         @rmdir($directory);
     }
 });
+
+/**
+ * Generate a MaxMind-shaped .tar.gz whose .mmdb member is $bytes long, streamed to disk in
+ * 1 MB blocks so building it never holds the member in memory. Highly compressible, so the
+ * archive itself (what the faked download returns) stays a few KB. Returns the archive's
+ * contents and the member's sha1.
+ *
+ * @return array{0: string, 1: string}
+ */
+function largeMaxMindArchive(string $edition, int $bytes): array
+{
+    $work = sys_get_temp_dir().'/'.uniqid('mmlarge_', true);
+    $directory = "{$work}/{$edition}_20240101";
+    mkdir($directory, 0755, true);
+
+    $member = fopen("{$directory}/{$edition}.mmdb", 'wb');
+    $hash = hash_init('sha1');
+    $block = str_repeat('MaxMind.com', intdiv(1 << 20, 11) + 1);
+
+    for ($written = 0; $written < $bytes; $written += strlen($chunk)) {
+        $chunk = substr($block, 0, min(strlen($block), $bytes - $written));
+        fwrite($member, $chunk);
+        hash_update($hash, $chunk);
+    }
+
+    fclose($member);
+
+    $tar = new PharData("{$work}/archive.tar");
+    $tar->addFile("{$directory}/{$edition}.mmdb", "{$edition}_20240101/{$edition}.mmdb");
+    unset($tar);
+
+    $in = fopen("{$work}/archive.tar", 'rb');
+    $out = gzopen("{$work}/archive.tar.gz", 'wb9');
+
+    while (! feof($in)) {
+        gzwrite($out, (string) fread($in, 1 << 20));
+    }
+
+    fclose($in);
+    gzclose($out);
+
+    $archive = (string) file_get_contents("{$work}/archive.tar.gz");
+
+    File::deleteDirectory($work);
+
+    return [$archive, hash_final($hash)];
+}
+
+it('streams a large database through the update instead of holding it in memory', function (): void {
+    $bytes = 32 * 1024 * 1024;
+    [$archive, $sha1] = largeMaxMindArchive('GeoLite2-City', $bytes);
+    $sinks = [];
+    Http::fake(['download.maxmind.com/*' => function (Request $request, array $options) use ($archive, &$sinks) {
+        $sinks[] = $options['sink'] ?? null;
+
+        return Http::response($archive);
+    }]);
+    $action = app(UpdateDatabaseAction::class);
+
+    gc_collect_cycles();
+    memory_reset_peak_usage();
+    $before = memory_get_usage();
+
+    $path = $action->execute();
+
+    $grown = memory_get_peak_usage() - $before;
+
+    expect($grown)->toBeLessThan(intdiv($bytes, 4))
+        ->and(filesize($path))->toBe($bytes)
+        ->and(hash_file('sha1', $path))->toBe($sha1)
+        ->and(glob(dirname($path).'/*') ?: [])->toBe([$path]);
+
+    // The download streamed to a temporary file, and nothing temporary is left behind.
+    expect($sinks)->toHaveCount(1)
+        ->and($sinks[0])->toBeString()
+        ->and(file_exists((string) $sinks[0]))->toBeFalse()
+        ->and(file_exists($sinks[0].'.tar'))->toBeFalse();
+});
+
+it('cleans up the streamed download when the server refuses it', function (): void {
+    $sinks = [];
+    Http::fake(['download.maxmind.com/*' => function (Request $request, array $options) use (&$sinks) {
+        $sinks[] = $options['sink'] ?? null;
+
+        return Http::response('Invalid license key', 401);
+    }]);
+
+    expect(fn () => app(UpdateDatabaseAction::class)->execute())
+        ->toThrow(DatabaseUpdateException::class, 'Download failed');
+
+    expect($sinks)->toHaveCount(1)
+        ->and($sinks[0])->toBeString()
+        ->and(file_exists((string) $sinks[0]))->toBeFalse();
+});
+
+it('wraps a gzip archive that is cut short', function (): void {
+    Http::fake(['download.maxmind.com/*' => Http::response(substr(fakeMaxMindArchive('GeoLite2-City', str_repeat('x', 4096)), 0, 40))]);
+
+    app(UpdateDatabaseAction::class)->execute();
+})->throws(DatabaseUpdateException::class, 'Could not unpack the database');

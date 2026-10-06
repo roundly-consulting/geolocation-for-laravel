@@ -48,6 +48,10 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
   `withToken()` / `withConfig()` throw `UnknownProviderException`, and so does a call pinned to an
   unknown name through `using()` / `provider()`. A pinned `batch()` answers `null` per IP, as it
   does for real.
+- `geolocation:db:update` / `Geolocation::updateDatabase()` streams the download to disk and
+  unpacks it file to file, so memory stays flat. A GeoLite2-City-sized archive used to need
+  about 2.5× the database size in memory. Under PHP's default `memory_limit=128M` that crashed
+  the update and left the downloaded archive behind in the temp directory.
 
 ## 1.0.0 - 2026-10-03
 
