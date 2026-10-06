@@ -6,6 +6,8 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+## 2.0.0 - 2026-10-06
+
 ### Added
 
 - A `DistanceResolutionFailed` event (`query`, `provider`, `error`) fires whenever `distance()`
@@ -27,6 +29,10 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
   text, so their wording can differ from Distance Matrix's.
 - Documentation: the README's installation notes say the Google key needs the Geocoding API and
   the Routes API enabled.
+- Documentation: the README hero image loads from an absolute URL, so it renders on Packagist and
+  other sites.
+- Maintenance: `composer.json` `homepage` and `support.docs` point at the package documentation
+  site.
 
 ### Fixed
 
