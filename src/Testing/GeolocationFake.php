@@ -111,11 +111,12 @@ final class GeolocationFake extends GeolocationManager
      */
     public function updateDatabase(?string $edition = null, ?string $path = null): string
     {
-        // Resolved like the real action: a blank edition (argument or config) is not set.
+        // Resolved like the real action: a blank edition (argument or config) or path
+        // argument is not set.
         $edition = $edition !== null && $edition !== ''
             ? $edition
             : GeolocationConfig::string('geolocation.services.maxmind_database.edition', config('geolocation.services.maxmind_database.edition'), 'GeoLite2-City');
-        $path = $path ?? (string) config('geolocation.services.maxmind_database.path', '');
+        $path = $path !== null && $path !== '' ? $path : (string) config('geolocation.services.maxmind_database.path', '');
 
         $this->state->databaseUpdates[] = ['edition' => $edition, 'path' => $path];
 

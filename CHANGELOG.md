@@ -58,6 +58,8 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 - `flushCache()` called while a lookup or distance is in flight no longer lets that pre-flush
   result survive. `locate*()` and `distance()` build their cache key once, so the result is
   stored under the old generation instead of the new one, where it lived for the whole TTL.
+- The fake's `updateDatabase(null, '')` returns the configured path, as the real refresh does,
+  instead of `''`.
 
 ## 1.0.0 - 2026-10-03
 

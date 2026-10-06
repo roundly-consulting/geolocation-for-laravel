@@ -366,3 +366,12 @@ it('accepts a pin to a runtime-registered provider', function () {
 
     $fake->assertProviderUsed('custom');
 });
+
+it('records a blank path as the configured one, like the real refresh', function (): void {
+    config()->set('geolocation.services.maxmind_database.path', '/tmp/conf.mmdb');
+    $fake = Geolocation::fake();
+
+    expect(Geolocation::updateDatabase(null, ''))->toBe('/tmp/conf.mmdb');
+
+    $fake->assertDatabaseUpdated('GeoLite2-City');
+});
