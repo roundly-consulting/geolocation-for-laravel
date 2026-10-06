@@ -52,6 +52,9 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
   unpacks it file to file, so memory stays flat. A GeoLite2-City-sized archive used to need
   about 2.5× the database size in memory. Under PHP's default `memory_limit=128M` that crashed
   the update and left the downloaded archive behind in the temp directory.
+- The `maxmind_database` provider keeps throwing `InvalidDatabaseException` (or
+  `DatabaseNotFoundException`) while the `.mmdb` on disk is corrupt or missing. It used to throw
+  once and then silently answer from the previous file's reader until the file changed again.
 
 ## 1.0.0 - 2026-10-03
 

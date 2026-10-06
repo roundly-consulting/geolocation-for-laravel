@@ -35,9 +35,13 @@ final class ReaderCache
             return $this->readers[$path];
         }
 
+        // Open first: a file that fails to open must not have its signature recorded, or
+        // every later call would match it and serve the previous file's reader.
+        $reader = new Reader($path);
+
         $this->signatures[$path] = $signature;
 
-        return $this->readers[$path] = new Reader($path);
+        return $this->readers[$path] = $reader;
     }
 
     private function signature(string $path): string
