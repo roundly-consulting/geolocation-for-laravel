@@ -41,6 +41,12 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
      */
     private const string ROUTE_MATRIX_FIELDS = 'originIndex,destinationIndex,status,condition,distanceMeters,duration,localizedValues';
 
+    /**
+     * The Routes API's cap on origins × destinations in one computeRouteMatrix request (for a
+     * traffic-unaware, non-transit matrix — the only kind this provider sends).
+     */
+    private const int ROUTE_MATRIX_MAX_ELEMENTS = 625;
+
     public function distance(DistanceQuery $query): ?Distance
     {
         return $this->routeMatrix([$query->from()], [$query->to()], $query->type)[0][0] ?? null;
@@ -49,7 +55,9 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
     /**
      * Resolve a full distance grid between several origins and destinations through the
      * Routes API's computeRouteMatrix, degrading to null cells when the API is unreachable or
-     * rejects the request, or when a leg has no route.
+     * rejects the request, or when a leg has no route. A grid over the API's element cap is
+     * split into tiles that each fit, sent one by one through the rate limiter, and merged back
+     * by original index; a tile that fails leaves only its own cells null.
      *
      * @param  list<Coordinates>  $origins
      * @param  list<Coordinates>  $destinations
@@ -63,11 +71,32 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
             return new DistanceMatrix($origins, $destinations, []);
         }
 
-        try {
-            $cells = $this->routeMatrix($origins, $destinations, $type);
-        } catch (ProviderUnavailableException) {
-            // An unreachable or refusing API degrades every cell to null rather than aborting.
-            $cells = [];
+        [$originsPerTile, $destinationsPerTile] = $this->tileSize(count($origins), count($destinations));
+        $cells = [];
+
+        foreach (array_chunk($origins, $originsPerTile, true) as $originTile) {
+            foreach (array_chunk($destinations, $destinationsPerTile, true) as $destinationTile) {
+                try {
+                    $tile = $this->routeMatrix(array_values($originTile), array_values($destinationTile), $type);
+                } catch (ProviderUnavailableException) {
+                    // An unreachable or refusing API degrades the tile to null cells rather
+                    // than aborting the whole grid.
+                    continue;
+                }
+
+                $originKeys = array_keys($originTile);
+                $destinationKeys = array_keys($destinationTile);
+
+                foreach ($tile as $originIndex => $row) {
+                    foreach ($row as $destinationIndex => $distance) {
+                        // Google numbers the elements within the request; an index outside the
+                        // tile is junk and must not land in a neighbouring tile's cell.
+                        if (isset($originKeys[$originIndex], $destinationKeys[$destinationIndex])) {
+                            $cells[$originKeys[$originIndex]][$destinationKeys[$destinationIndex]] = $distance;
+                        }
+                    }
+                }
+            }
         }
 
         $rows = [];
@@ -79,6 +108,29 @@ final class GoogleProvider implements DistanceProvider, GeolocationProvider
         }
 
         return new DistanceMatrix($origins, $destinations, $rows);
+    }
+
+    /**
+     * The tile (origins × destinations per request) that covers the grid in the fewest
+     * requests while staying within the element cap.
+     *
+     * @return array{int<1, max>, int<1, max>}
+     */
+    private function tileSize(int $origins, int $destinations): array
+    {
+        $best = [1, 1];
+        $fewest = PHP_INT_MAX;
+
+        for ($rows = 1; $rows <= min($origins, self::ROUTE_MATRIX_MAX_ELEMENTS); $rows++) {
+            $columns = max(1, min($destinations, intdiv(self::ROUTE_MATRIX_MAX_ELEMENTS, $rows)));
+            $requests = (int) (ceil($origins / $rows) * ceil($destinations / $columns));
+
+            if ($requests < $fewest) {
+                [$best, $fewest] = [[$rows, $columns], $requests];
+            }
+        }
+
+        return $best;
     }
 
     /**

@@ -30,6 +30,10 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 - A Google geocoding request the API rejects (`REQUEST_DENIED`, `OVER_QUERY_LIMIT`,
   `INVALID_REQUEST`, …) now throws a redacted `ProviderUnavailableException` naming the status,
   so the pipeline moves on and `LocationResolutionFailed` says why, instead of a silent `null`.
+- `distanceMatrix()` splits a grid over the Routes API's 625-element cap into requests that fit
+  and merges the cells back by their original indices. An oversized grid used to go out as one
+  request that Google refused, which left every cell `null`. A tile that fails now leaves only
+  its own cells `null`.
 
 ## 1.0.0 - 2026-10-03
 

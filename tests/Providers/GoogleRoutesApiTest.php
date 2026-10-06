@@ -230,3 +230,98 @@ it('serves the readme distanceBetween() example from the routes api', function (
 
     Http::assertSentCount(1);
 });
+
+/**
+ * A Routes API stand-in that answers every pair of the request it got, encoding the pair's
+ * ABSOLUTE position (origin latitude × 10, destination longitude × 10) into distanceMeters,
+ * and recording each request's size.
+ *
+ * @param  list<array{origins: int, destinations: int}>  $sizes
+ */
+function routeMatrixEcho(array &$sizes): Closure
+{
+    return static function (Request $request) use (&$sizes) {
+        $origins = $request['origins'];
+        $destinations = $request['destinations'];
+        $sizes[] = ['origins' => count($origins), 'destinations' => count($destinations)];
+        $elements = [];
+
+        foreach ($origins as $o => $origin) {
+            foreach ($destinations as $d => $destination) {
+                $absolute = (int) round($origin['waypoint']['location']['latLng']['latitude'] * 10) * 10000
+                    + (int) round($destination['waypoint']['location']['latLng']['longitude'] * 10);
+                $elements[] = routeElement($o, $d, $absolute, '1s');
+            }
+        }
+
+        return Http::response($elements);
+    };
+}
+
+it('splits a matrix over the routes api element limit and merges cells by index', function (int $originCount, int $destinationCount, int $requests): void {
+    $sizes = [];
+    Http::fake(['routes.googleapis.com/*' => routeMatrixEcho($sizes)]);
+
+    $origins = array_map(fn (int $i): Coordinates => new Coordinates($i / 10, 0.0), range(0, $originCount - 1));
+    $destinations = array_map(fn (int $j): Coordinates => new Coordinates(0.0, $j / 10), range(0, $destinationCount - 1));
+
+    $matrix = (new GoogleProvider)->distanceMatrix($origins, $destinations);
+
+    expect($sizes)->toHaveCount($requests);
+
+    foreach ($sizes as $size) {
+        expect($size['origins'] * $size['destinations'])->toBeLessThanOrEqual(625);
+    }
+
+    foreach (array_keys($origins) as $i) {
+        foreach (array_keys($destinations) as $j) {
+            expect($matrix->get($i, $j)?->distanceInMeters)->toBe($i * 10000 + $j);
+        }
+    }
+})->with([
+    '26 x 25' => [26, 25, 2],
+    '1 x 700' => [1, 700, 2],
+    '30 x 30' => [30, 30, 2],
+    '25 x 25 fits' => [25, 25, 1],
+]);
+
+it('keeps the answered tiles when one tile of a split matrix fails', function (): void {
+    $calls = 0;
+    Http::fake(['routes.googleapis.com/*' => function (Request $request) use (&$calls) {
+        $calls++;
+
+        if ($calls === 2) {
+            return Http::response(['error' => ['code' => 429, 'status' => 'RESOURCE_EXHAUSTED']], 429);
+        }
+
+        $elements = [];
+
+        foreach (array_keys($request['origins']) as $o) {
+            foreach (array_keys($request['destinations']) as $d) {
+                $elements[] = routeElement($o, $d, 1, '1s');
+            }
+        }
+
+        return Http::response($elements);
+    }]);
+
+    $matrix = (new GoogleProvider)->distanceMatrix(
+        array_fill(0, 26, new Coordinates(1, 2)),
+        array_fill(0, 25, new Coordinates(3, 4)),
+    );
+
+    $answered = array_sum(array_map(fn (array $row): int => count(array_filter($row)), $matrix->rows));
+
+    expect($calls)->toBe(2)
+        ->and($answered)->toBeGreaterThan(0)
+        ->and($answered)->toBeLessThan(26 * 25)
+        ->and(array_map(fn (array $row): int => count($row), $matrix->rows))->toBe(array_fill(0, 26, 25));
+});
+
+it('ignores an element whose index is outside the request', function (): void {
+    Http::fake(['routes.googleapis.com/*' => Http::response([routeElement(3, 0, 1, '1s'), routeElement(0, 7, 1, '1s')])]);
+
+    $matrix = (new GoogleProvider)->distanceMatrix([new Coordinates(1, 2)], [new Coordinates(3, 4)]);
+
+    expect($matrix->rows)->toBe([[0 => null]]);
+});
