@@ -32,7 +32,8 @@ composer require roundly-consulting/geolocation-for-laravel
 ```
 
 IP lookups work out of the box through IP2Location and IPinfo. Address lookups and distances go
-through Google and need `GOOGLE_MAPS_API_KEY` in your `.env`.
+through Google and need `GOOGLE_MAPS_API_KEY` in your `.env`, with the Geocoding API and the
+Routes API enabled on that key.
 
 ## Usage
 

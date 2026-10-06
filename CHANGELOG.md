@@ -25,6 +25,8 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
   The pipeline skips the provider, and `distanceMatrix()` degrades to `null` cells.
   `humanReadableDistance` and `humanReadableDuration` now come from the Routes API's localized
   text, so their wording can differ from Distance Matrix's.
+- Documentation: the README's installation notes say the Google key needs the Geocoding API and
+  the Routes API enabled.
 
 ### Fixed
 
@@ -33,7 +35,8 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
   point back on save and silently drop the update.
 - The HTTP providers (`google`, `ipinfo`, `ip2location`, `maxmind_web`) retry only connection
   errors and `5xx` responses. A `4xx` (bad key, unknown IP, `429`) is no longer re-sent up to
-  `services.<provider>.retry` times inside the same rate-limit slot.
+  `services.<provider>.retry` times inside the same rate-limit slot. The retries of one call
+  still share that call's single slot.
 - A Google geocoding request the API rejects (`REQUEST_DENIED`, `OVER_QUERY_LIMIT`,
   `INVALID_REQUEST`, …) now throws a redacted `ProviderUnavailableException` naming the status,
   so the pipeline moves on and `LocationResolutionFailed` says why, instead of a silent `null`.
