@@ -6,6 +6,13 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+### Added
+
+- A `DistanceResolutionFailed` event (`query`, `provider`, `error`) fires whenever `distance()`
+  or `distanceBetween()` ends without a distance, so a rejected key or an unreachable API is
+  observable instead of a silent `null`. It mirrors `LocationResolutionFailed` and is governed
+  by `events.enabled`.
+
 ### Changed
 
 - **BREAKING:** Google distances (`distance()`, `distanceBetween()`, `distanceMatrix()`) now call

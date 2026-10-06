@@ -82,8 +82,9 @@ return [
     | Events
     |--------------------------------------------------------------------------
     |
-    | When enabled, the manager dispatches LocationResolved, DistanceResolved
-    | and LocationResolutionFailed events so host apps can react to lookups.
+    | When enabled, the manager dispatches LocationResolved, DistanceResolved,
+    | LocationResolutionFailed and DistanceResolutionFailed events so host apps
+    | can react to lookups.
     |
     */
 

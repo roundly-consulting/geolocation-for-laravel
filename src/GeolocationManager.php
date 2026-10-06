@@ -20,6 +20,7 @@ use RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\Enum\DistanceType;
 use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+use RoundlyConsulting\Geolocation\Events\DistanceResolutionFailed;
 use RoundlyConsulting\Geolocation\Events\DistanceResolved;
 use RoundlyConsulting\Geolocation\Events\LocationResolutionFailed;
 use RoundlyConsulting\Geolocation\Events\LocationResolved;
@@ -398,20 +399,34 @@ class GeolocationManager
         return null;
     }
 
+    /**
+     * Walk the pipeline until a distance provider answers. Mirrors resolveLocation(): an
+     * unreachable or refusing API (ProviderUnavailableException) is skipped, any other
+     * exception aborts, and a call that ends without a distance dispatches
+     * DistanceResolutionFailed naming the provider that failed last and its (redacted) error.
+     */
     private function resolveDistance(DistanceQuery $query): ?Distance
     {
+        $failedProvider = null;
+        $error = null;
+
         foreach ($this->providerNames() as $name) {
-            $provider = $this->activate($name);
-
-            if (! $provider instanceof DistanceProvider) {
-                continue;
-            }
-
             try {
+                $provider = $this->activate($name);
+
+                if (! $provider instanceof DistanceProvider) {
+                    continue;
+                }
+
                 $distance = $provider->distance($query);
-            } catch (ProviderUnavailableException) {
-                // An unreachable API is a miss, not an abort: ask the next provider.
+            } catch (ProviderUnavailableException $e) {
+                [$failedProvider, $error] = [$name, $e];
+
                 continue;
+            } catch (Throwable $e) {
+                $this->dispatch(new DistanceResolutionFailed($query, $name, $e));
+
+                throw $e;
             }
 
             if ($distance instanceof Distance) {
@@ -420,6 +435,8 @@ class GeolocationManager
                 return $distance;
             }
         }
+
+        $this->dispatch(new DistanceResolutionFailed($query, $failedProvider, $error));
 
         return null;
     }
