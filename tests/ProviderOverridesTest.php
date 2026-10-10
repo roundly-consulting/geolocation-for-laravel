@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
 use RoundlyConsulting\Geolocation\Exceptions\UnknownProviderException;
 use RoundlyConsulting\Geolocation\Facades\Geolocation;
+use RoundlyConsulting\Geolocation\GeolocationManager;
 use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
 
 beforeEach(function (): void {
@@ -89,6 +90,67 @@ it('sends a withToken() license key to the maxmind web service only', function (
 it('refuses an override for a provider that is not registered', function (): void {
     Geolocation::withToken('ipnfo', 'typo');
 })->throws(UnknownProviderException::class);
+
+/**
+ * The package's own frames of whatever $call throws, captured with frame arguments on (error
+ * trackers collect them; CI's production ini turns them off).
+ *
+ * @return list<array<string, mixed>>
+ */
+function geolocationFramesOf(Closure $call): array
+{
+    $previous = ini_set('zend.exception_ignore_args', '0');
+
+    try {
+        $call();
+    } catch (Throwable $e) {
+        return array_values(array_filter(
+            $e->getTrace(),
+            fn (array $frame): bool => str_starts_with($frame['class'] ?? '', 'RoundlyConsulting\\Geolocation\\'),
+        ));
+    } finally {
+        ini_set('zend.exception_ignore_args', (string) $previous);
+    }
+
+    throw new LogicException('The call did not throw.');
+}
+
+/**
+ * Whether $needle sits in a string argument, descending arrays. Objects are skipped: frame
+ * serialisers render them by class, and SensitiveParameterValue hides its value anyway.
+ */
+function geolocationArgsHold(mixed $value, string $needle): bool
+{
+    return match (true) {
+        is_string($value) => str_contains($value, $needle),
+        is_array($value) => array_any($value, fn (mixed $item): bool => geolocationArgsHold($item, $needle)),
+        default => false,
+    };
+}
+
+it('keeps a refused credential out of the manager frames', function (string $via): void {
+    $manager = app(GeolocationManager::class);
+
+    $frames = geolocationFramesOf(fn () => $via === 'withToken'
+        ? $manager->withToken('ipnfo', 'TYPO-SECRET')
+        : $manager->withConfig('ipnfo', ['token' => 'TYPO-SECRET']));
+
+    expect(array_column($frames, 'function'))->toContain('withConfig')
+        ->and(geolocationArgsHold(array_column($frames, 'args'), 'ipnfo'))->toBeTrue()
+        ->and(geolocationArgsHold(array_column($frames, 'args'), 'TYPO-SECRET'))->toBeFalse();
+})->with(['withToken', 'withConfig']);
+
+it('keeps a scoped credential out of the frames when a provider throws', function (): void {
+    config()->set('geolocation.pipeline', ['ipinfo']);
+
+    $frames = geolocationFramesOf(fn () => Geolocation::withToken('ipinfo', 'RUNTIME-SECRET')
+        ->withConfig('ipinfo', ['timeout' => 'five'])
+        ->locateIp('8.8.8.8'));
+
+    expect(array_column($frames, 'function'))->toContain('during')
+        ->and(geolocationArgsHold(array_column($frames, 'args'), '8.8.8.8'))->toBeTrue()
+        ->and(geolocationArgsHold(array_column($frames, 'args'), 'RUNTIME-SECRET'))->toBeFalse();
+});
 
 it('accepts an override for a runtime-registered provider', function (): void {
     Geolocation::extend('custom', fn () => new stdClass);

@@ -208,7 +208,7 @@ final class GeolocationFake extends GeolocationManager
      *
      * @param  array<string, mixed>  $overrides
      */
-    public function withConfig(string $provider, array $overrides): GeolocationManager
+    public function withConfig(string $provider, #[SensitiveParameter] array $overrides): GeolocationManager
     {
         $this->ensureRegistered($provider);
 

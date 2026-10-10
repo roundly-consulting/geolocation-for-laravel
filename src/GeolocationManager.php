@@ -320,7 +320,7 @@ class GeolocationManager
      *
      * @throws UnknownProviderException when no provider is registered under $provider
      */
-    public function withConfig(string $provider, array $overrides): self
+    public function withConfig(string $provider, #[SensitiveParameter] array $overrides): self
     {
         $this->ensureRegistered($provider);
 

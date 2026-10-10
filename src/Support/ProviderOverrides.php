@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Geolocation\Support;
 
 use Closure;
+use SensitiveParameter;
 
 /**
  * The call-time provider configuration overrides (token, timeout, …) of the resolution that
@@ -45,7 +46,7 @@ final class ProviderOverrides
      * @param  Closure(): TResult  $callback
      * @return TResult
      */
-    public function during(array $shared, array $scoped, Closure $callback): mixed
+    public function during(array $shared, #[SensitiveParameter] array $scoped, Closure $callback): mixed
     {
         [$previousShared, $previousScoped, $previousActive] = [$this->shared, $this->scoped, $this->active];
         [$this->shared, $this->scoped, $this->active] = [$shared, $scoped, null];
