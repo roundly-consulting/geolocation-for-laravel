@@ -6,6 +6,7 @@ use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\File;
 use RoundlyConsulting\Geolocation\Tests\TestCase;
 
 uses(TestCase::class)->in(__DIR__);
@@ -27,7 +28,8 @@ function fakeMaxMindArchive(string $edition, string $contents, ?string $member =
 
     $gz = gzencode((string) file_get_contents($tarPath));
 
-    unlink($tarPath);
+    // The whole work directory, member included — removing only the tar left one behind per call.
+    File::deleteDirectory($work);
 
     return (string) $gz;
 }

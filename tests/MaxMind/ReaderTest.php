@@ -83,10 +83,12 @@ it('throws when the database file does not exist', function (): void {
 })->throws(DatabaseNotFoundException::class);
 
 it('throws for a file without a metadata marker', function (): void {
-    $path = tempnam(sys_get_temp_dir(), 'mmdb').'.mmdb';
-    file_put_contents($path, str_repeat('garbage-data', 50));
+    // One file, removed again: a tempnam() name plus a suffix would leave the tempnam() file.
+    $path = sys_get_temp_dir().'/'.uniqid('garbage_', true).'.mmdb';
 
     try {
+        file_put_contents($path, str_repeat('garbage-data', 50));
+
         new Reader($path);
     } finally {
         @unlink($path);
