@@ -22,7 +22,7 @@ final class CoordinatesRule implements ValidationRule
         [$latitude, $longitude] = $this->extract($value);
 
         if ($latitude === null || $longitude === null || ! is_numeric($latitude) || ! is_numeric($longitude)) {
-            $fail("The {$attribute} must be a valid latitude/longitude coordinate.");
+            $fail(trans('geolocation::validation.coordinates'));
 
             return;
         }
@@ -31,7 +31,7 @@ final class CoordinatesRule implements ValidationRule
         $lng = (float) $longitude;
 
         if ($lat < -90.0 || $lat > 90.0 || $lng < -180.0 || $lng > 180.0) {
-            $fail("The {$attribute} must be a valid latitude/longitude coordinate.");
+            $fail(trans('geolocation::validation.coordinates'));
         }
     }
 

@@ -21,6 +21,7 @@ final class GeolocationServiceProvider extends PackageServiceProvider
         $package
             ->name('geolocation')
             ->hasConfigFile()
+            ->hasTranslations()
             ->hasCommands([
                 LocateCommand::class,
                 UpdateDatabaseCommand::class,

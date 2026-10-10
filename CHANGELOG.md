@@ -6,6 +6,13 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+### Fixed
+
+- The `CoordinatesRule` (`Rule::coordinates()`) message is now translatable, in English and
+  Slovak (key `geolocation::validation.coordinates`, publish tag `geolocation-translations`),
+  and names the field by its display name (`home location`, or the host's
+  `validation.attributes` entry) instead of the raw key (`home_location`).
+
 ## 2.0.1 - 2026-10-06
 
 ### Fixed

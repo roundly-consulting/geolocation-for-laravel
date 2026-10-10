@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Geolocation\GeolocationManager;
+use RoundlyConsulting\Geolocation\GeolocationServiceProvider;
 use RoundlyConsulting\Geolocation\Support\ProviderOverrides;
 
 it('binds the geolocation manager and its container alias', function (): void {
@@ -50,4 +51,12 @@ it('reports an empty pipeline to the about command', function (): void {
     $this->artisan('about', ['--only' => 'geolocation'])
         ->expectsOutputToContain('NONE')
         ->assertSuccessful();
+});
+
+it('publishes the translations under the geolocation-translations tag', function (): void {
+    $paths = ServiceProvider::pathsToPublish(GeolocationServiceProvider::class, 'geolocation-translations');
+
+    expect($paths)->toHaveCount(1)
+        ->and(realpath((string) array_key_first($paths)))->toBe(realpath(__DIR__.'/../resources/lang'))
+        ->and(array_values($paths))->toBe([lang_path('vendor/geolocation')]);
 });
