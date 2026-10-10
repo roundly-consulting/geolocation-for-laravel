@@ -27,9 +27,17 @@ use Throwable;
  */
 final readonly class UpdateDatabaseAction
 {
+    /**
+     * @param  string|null  $temporaryDirectory  where the download is staged and unpacked;
+     *                                           null means sys_get_temp_dir(). An internal
+     *                                           seam that lets a test watch a directory of its
+     *                                           own — hosts move the staging area with TMPDIR
+     *                                           or the sys_temp_dir ini setting instead.
+     */
     public function __construct(
         private Repository $config,
         private Factory $http,
+        private ?string $temporaryDirectory = null,
     ) {}
 
     /**
@@ -113,7 +121,7 @@ final readonly class UpdateDatabaseAction
      */
     private function download(string $baseUrl, int $timeout, string $edition, #[SensitiveParameter] string $licenseKey): string
     {
-        $temp = tempnam(sys_get_temp_dir(), 'mmdb');
+        $temp = tempnam($this->temporaryDirectory ?? sys_get_temp_dir(), 'mmdb');
 
         if ($temp === false) {
             throw new RuntimeException('Unable to create a temporary file for the download.');
