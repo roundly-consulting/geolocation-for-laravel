@@ -37,7 +37,9 @@ it('pins the facade contract', function (): void {
     expect(Geolocation::class)
         ->toDocumentItsRoot()
         ->toBeFakeable()
-        ->toReachEveryAction(__DIR__.'/../../src/Actions');
+        ->toReachEveryAction(__DIR__.'/../../src/Actions')
+        // withToken($token) and withConfig($overrides): the facade frame must not hold a credential
+        ->toRedactSensitiveArguments(methods: 2);
 });
 
 it('resolves the manager from the facade accessor', function (): void {

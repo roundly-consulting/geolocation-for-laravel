@@ -9,6 +9,7 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 ### Security
 
 - `withConfig()` now marks its `$overrides` `#[SensitiveParameter]`, and so does the internal call that applies them during a lookup. Before, a token passed to `withToken()` or `withConfig()` stayed readable in those stack frames when the provider name was unknown or a provider threw, where error trackers that collect frame arguments could read it.
+- Flat facade calls (`Geolocation::withToken()`, `Geolocation::withConfig()`) no longer leave their `#[SensitiveParameter]` arguments in the facade's stack frame either. Requires package-toolkit `^1.3`.
 
 ## 2.0.2 - 2026-10-10
 

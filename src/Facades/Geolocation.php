@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Facade;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
 use RoundlyConsulting\Geolocation\GeolocationManager;
 use RoundlyConsulting\Geolocation\Testing\GeolocationFake;
+use RoundlyConsulting\PackageToolkit\Concerns\RedactsSensitiveArguments;
 
 /**
  * @method static \RoundlyConsulting\Geolocation\DataTransferObjects\Location|null locate(\RoundlyConsulting\Geolocation\DataTransferObjects\GeolocationQuery $query)
@@ -45,6 +46,8 @@ use RoundlyConsulting\Geolocation\Testing\GeolocationFake;
  */
 final class Geolocation extends Facade
 {
+    use RedactsSensitiveArguments;
+
     /**
      * Swap the manager for a recording, network-free fake — behind the facade and in the
      * container, so an injected GeolocationManager (and `$request->location()`) is faked too.
