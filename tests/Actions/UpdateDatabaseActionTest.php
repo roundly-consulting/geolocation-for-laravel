@@ -129,17 +129,43 @@ it('wraps an archive without a database file', function (): void {
     app(UpdateDatabaseAction::class)->execute();
 })->throws(DatabaseUpdateException::class, 'No .mmdb file was found inside the [GeoLite2-City] archive.');
 
-it('leaves no temporary archive behind', function (): void {
-    Http::fake(['download.maxmind.com/*' => Http::response('not-gzip-data')]);
-    $before = glob(sys_get_temp_dir().'/mmdb*') ?: [];
+/**
+ * The action stages its download in a directory of the test's own, so "nothing left behind"
+ * means that directory is empty — never a before/after diff of the shared temp folder, which
+ * other parallel workers write to at the same time.
+ */
+it('leaves no temporary file behind', function (Closure $respond): void {
+    $directory = sys_get_temp_dir().'/'.uniqid('mmstage_', true);
+    mkdir($directory, 0700);
+    $sinks = [];
+    Http::fake(['download.maxmind.com/*' => function (Request $request, array $options) use ($respond, &$sinks) {
+        $sinks[] = $options['sink'] ?? null;
+
+        return $respond();
+    }]);
 
     try {
-        app(UpdateDatabaseAction::class)->execute();
-    } catch (DatabaseUpdateException) {
-    }
+        try {
+            app()->make(UpdateDatabaseAction::class, ['temporaryDirectory' => $directory])->execute();
+        } catch (DatabaseUpdateException) {
+            // The failure paths must clean up just the same.
+        }
 
-    expect(glob(sys_get_temp_dir().'/mmdb*') ?: [])->toBe($before);
-});
+        // The download really went through the directory: an empty one nothing was ever
+        // written to would prove nothing. tempnam() resolves symlinks (macOS: /var → /private/var).
+        expect($sinks)->toHaveCount(1)
+            ->and(dirname((string) $sinks[0]))->toBe(realpath($directory))
+            ->and(scandir($directory))->toBe(['.', '..']);
+    } finally {
+        File::deleteDirectory($directory);
+    }
+})->with([
+    'after a successful update' => fn () => Http::response(fakeMaxMindArchive('GeoLite2-City', 'NEW-DB')),
+    'when the server refuses the download' => fn () => Http::response('Invalid license key', 401),
+    'when the archive is not gzip' => fn () => Http::response('not-gzip-data'),
+    'when the archive holds no database' => fn () => Http::response(fakeMaxMindArchive('GeoLite2-City', 'readme', 'README.txt')),
+    'when the archive is cut short' => fn () => Http::response(substr(fakeMaxMindArchive('GeoLite2-City', str_repeat('x', 4096)), 0, 40)),
+]);
 
 it('wraps a destination it cannot write and leaves nothing behind', function (): void {
     $directory = sys_get_temp_dir().'/'.uniqid('mmro_', true);
@@ -265,8 +291,10 @@ it('cleans up the streamed download when the server refuses it', function (): vo
     expect(fn () => app(UpdateDatabaseAction::class)->execute())
         ->toThrow(DatabaseUpdateException::class, 'Download failed');
 
+    // A host's download is staged in the system temporary directory, as it always was.
     expect($sinks)->toHaveCount(1)
         ->and($sinks[0])->toBeString()
+        ->and(dirname((string) $sinks[0]))->toBe(realpath(sys_get_temp_dir()))
         ->and(file_exists((string) $sinks[0]))->toBeFalse();
 });
 
