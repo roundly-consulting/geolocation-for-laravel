@@ -6,6 +6,8 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+## 2.0.2 - 2026-10-10
+
 ### Fixed
 
 - The `CoordinatesRule` (`Rule::coordinates()`) message is now translatable, in English and
