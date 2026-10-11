@@ -6,6 +6,11 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+### Changed
+
+- Maintenance: requires the latest roundly packages — enums `^1.1.0`, http-client-rate-limits
+  `^1.1.0`, package-toolkit `^1.3.0`; dev: testing `^1.2.1`.
+
 ## 2.0.3 - 2026-10-10
 
 ### Security
