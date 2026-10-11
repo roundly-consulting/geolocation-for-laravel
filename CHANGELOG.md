@@ -6,10 +6,15 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+## 2.0.4 - 2026-10-11
+
 ### Changed
 
 - Maintenance: requires the latest roundly packages — enums `^1.1.0`, http-client-rate-limits
   `^1.1.0`, package-toolkit `^1.3.0`; dev: testing `^1.2.1`.
+- Maintenance: internal refactor — `UpdateDatabaseAction` can stage its MaxMind download in a
+  directory a test chooses. No behaviour change: hosts still move the staging area with `TMPDIR`
+  or the `sys_temp_dir` ini setting.
 
 ## 2.0.3 - 2026-10-10
 
