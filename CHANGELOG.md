@@ -6,6 +6,8 @@ All notable changes to `geolocation-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+## 3.0.0 - 2026-11-07
+
 ### Changed
 
 - **Breaking:** requires Laravel 13; Laravel 12 is no longer supported. Upgrade the application to Laravel 13 before updating.
