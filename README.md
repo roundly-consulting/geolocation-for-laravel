@@ -25,7 +25,7 @@ Google, MaxMind (with a native `.mmdb` reader) and a configurable fallback.
 
 ## Installation
 
-Requires PHP 8.4 and Laravel 12 or 13.
+Requires PHP 8.4 and Laravel 13.
 
 ```bash
 composer require roundly-consulting/geolocation-for-laravel
